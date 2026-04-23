@@ -1,0 +1,4 @@
+# Dev-only dependencies (preprocessing scripts, tests, etc.).
+# Currently empty: translate_chunks.py and ingest_jsonl_to_db.py both use
+# the openai SDK, which is already declared in requirements.txt as a runtime
+# dependency (needed by the retrieval service for query embedding).
