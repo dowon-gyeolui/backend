@@ -189,19 +189,28 @@ async def enrich_with_interpretation(
     saju: SajuResponse,
     db: AsyncSession,
 ) -> SajuResponse:
-    """Attach retrieval-grounded source citations to a saju response.
+    """Attach retrieval-grounded citations + LLM-generated interpretation.
 
-    Only vector_similarity matches count — keyword or placeholder results
-    do NOT flip interpretation_status to "ready".
-    Retrieval or embedding failures are swallowed; the base saju result is
-    returned with status still "pending".
+    Flow:
+      1. Build retrieval queries from dominant element + day pillar.
+      2. Call vector search; collect unique citations + source passages.
+      3. If at least one vector_similarity result exists → set status="ready".
+      4. Pass passages to the LLM interpreter (best-effort, failures swallowed).
+
+    Only vector_similarity matches count — keyword/placeholder results do NOT
+    flip status to "ready".
     """
-    # Imported here to avoid a circular import at module load time.
+    # Local imports to avoid module-load-time cycles.
     from app.schemas.knowledge import KnowledgeQuery
     from app.services.knowledge.retrieval import retrieve
+    from app.services.llm.interpret import (
+        RetrievedPassage,
+        generate_saju_interpretation,
+    )
 
     queries = _build_retrieval_queries(saju)
     citations: list[str] = []
+    passages_by_citation: dict[str, RetrievedPassage] = {}
 
     for q in queries:
         try:
@@ -209,18 +218,32 @@ async def enrich_with_interpretation(
         except Exception:
             continue
         for r in results:
-            if r.match_reason == "vector_similarity" and r.chunk.id != 0:
-                citations.append(r.source_citation)
+            if r.match_reason != "vector_similarity" or r.chunk.id == 0:
+                continue
+            citations.append(r.source_citation)
+            # Deduplicate by citation — one passage per source-chapter-section.
+            if r.source_citation not in passages_by_citation:
+                passages_by_citation[r.source_citation] = RetrievedPassage(
+                    citation=r.source_citation,
+                    content=r.chunk.content or "",
+                )
 
+    # Preserve first-seen order for citations.
     seen: set[str] = set()
-    unique: list[str] = []
+    unique_citations: list[str] = []
     for c in citations:
         if c not in seen:
             seen.add(c)
-            unique.append(c)
+            unique_citations.append(c)
 
-    if unique:
-        saju.interpretation_sources = unique
-        saju.interpretation_status = "ready"
+    if not unique_citations:
+        return saju  # status stays "pending"
+
+    saju.interpretation_sources = unique_citations
+    saju.interpretation_status = "ready"
+
+    # LLM call is best-effort — if it fails, the UI still has the citations.
+    ordered_passages = [passages_by_citation[c] for c in unique_citations]
+    saju.interpretation = generate_saju_interpretation(saju, ordered_passages)
 
     return saju

@@ -43,10 +43,19 @@ class SajuResponse(BaseModel):
     element_profile: ElementProfile
     summary: str                   # Short Korean provisional summary
 
-    # --- Retrieval-grounded interpretation layer (not yet implemented) ---
-    # When the knowledge pipeline is ready:
-    #   interpretation_status → "ready"
-    #   interpretation_sources → list of retrieved book passage references
-    # The LLM then formats these sources into a final interpretation string.
+    # --- Retrieval-grounded interpretation layer ---
+    # Pipeline:
+    #   retrieved chunks (sources) → LLM summarization → interpretation
+    #
+    # interpretation_status semantics:
+    #   "pending" — retrieval produced nothing relevant OR embedding unavailable
+    #   "ready"   — retrieval returned at least one vector-similarity match
+    #
+    # `interpretation_sources` is the citation list (always populated when ready).
+    # `interpretation` is the LLM-generated Korean summary, grounded strictly
+    # in those sources. It may be null even when status="ready" if the LLM
+    # call failed or was skipped — UI should gracefully fall back to showing
+    # the citations alone.
     interpretation_status: Literal["pending", "ready"] = "pending"
     interpretation_sources: list[str] = []
+    interpretation: Optional[str] = None

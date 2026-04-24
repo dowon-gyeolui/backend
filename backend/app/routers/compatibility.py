@@ -1,23 +1,58 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import get_current_user
 from app.database import get_db
+from app.models.user import User
 from app.schemas.compatibility import CompatibilityScore, MatchCandidate
 from app.services import compatibility as compatibility_service
 
 router = APIRouter()
 
 
+def _require_birth_data(user: User, *, is_self: bool) -> None:
+    if user.birth_date is None:
+        who = "자신의" if is_self else "상대의"
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{who} 생년월일이 먼저 입력되어야 합니다.",
+        )
+
+
 @router.get("/score/{target_user_id}", response_model=CompatibilityScore)
 async def get_compatibility_score(
     target_user_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    # TODO: Resolve current user from JWT
-    return compatibility_service.calculate_score(user_a_id=1, user_b_id=target_user_id)
+    if target_user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="자기 자신과의 궁합은 계산하지 않습니다.",
+        )
+    _require_birth_data(current_user, is_self=True)
+
+    target = await db.get(User, target_user_id)
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"user_id={target_user_id} 를 찾을 수 없습니다.",
+        )
+    _require_birth_data(target, is_self=False)
+
+    return compatibility_service.calculate(current_user, target)
 
 
 @router.get("/matches", response_model=list[MatchCandidate])
-async def get_matches(db: AsyncSession = Depends(get_db)):
-    # TODO: Resolve current user from JWT, query real candidates from DB
-    return compatibility_service.get_placeholder_matches(user_id=1)
+async def get_matches(
+    top_k: int = 5,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_birth_data(current_user, is_self=True)
+    if top_k < 1 or top_k > 20:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="top_k 는 1~20 사이여야 합니다.",
+        )
+    return await compatibility_service.find_matches(current_user, db, top_k=top_k)
