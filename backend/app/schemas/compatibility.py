@@ -10,22 +10,34 @@ class CompatibilityScore(BaseModel):
     user_b_id: int
     score: int  # 0~100
     # Short Korean summary built from pillar comparison + element balance.
-    # TODO: Optionally attach retrieval-grounded interpretation sources later.
     summary: Optional[str] = None
 
 
 class MatchCandidate(BaseModel):
-    """One match candidate in the /compatibility/matches list.
+    """One match candidate shown as a profile card.
 
-    Blinded profile (free tier): only user_id, score, gender, is_blinded=True.
-    Unblinded profile (paid tier): also reveals the candidate's birth_year so
-    the caller has enough saju context to decide whether to pursue the match.
+    Fields always visible:
+      user_id, score, nickname, age, gender, is_blinded
+
+    Free tier (is_blinded=True):
+      photo_url = None            — 사진 블라인드(모자이크 대체)
+      birth_year = None           — 정확한 연도 비공개
+      dominant_element = None
+
+    Paid tier (is_blinded=False):
+      photo_url                   — 본 사진 공개
+      birth_year                  — 생년 노출
+      dominant_element            — 주요 오행 공개로 대화 맥락 제공
     """
 
     user_id: int
     score: int  # 0~100
+    nickname: Optional[str] = None
+    age: Optional[int] = None
     gender: Optional[str] = None
     is_blinded: bool = True
-    # Unblinded-only fields (None when is_blinded=True)
+
+    # Unblinded-only extras (null when is_blinded=True)
+    photo_url: Optional[str] = None
     birth_year: Optional[int] = None
-    dominant_element: Optional[str] = None  # "목" | "화" | "토" | "금" | "수"
+    dominant_element: Optional[str] = None

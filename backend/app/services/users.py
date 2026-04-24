@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
-from app.schemas.user import BirthDataCreate, BirthDataUpdate
+from app.schemas.user import BirthDataCreate, BirthDataUpdate, ProfileUpdate
 
 
 async def set_birth_data(user: User, data: BirthDataCreate, db: AsyncSession) -> User:
@@ -18,6 +18,15 @@ async def set_birth_data(user: User, data: BirthDataCreate, db: AsyncSession) ->
 
 async def patch_birth_data(user: User, data: BirthDataUpdate, db: AsyncSession) -> User:
     """Update only the provided birth data fields (PATCH semantics)."""
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(user, field, value)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def patch_profile(user: User, data: ProfileUpdate, db: AsyncSession) -> User:
+    """Update only the provided profile fields (nickname / photo_url)."""
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(user, field, value)
     await db.commit()

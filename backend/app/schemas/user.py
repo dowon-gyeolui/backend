@@ -2,7 +2,7 @@ import re
 from datetime import date, datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 
@@ -43,6 +43,13 @@ class BirthDataUpdate(BaseModel):
         return _validate_time(v)
 
 
+class ProfileUpdate(BaseModel):
+    """Partial profile update — used for PATCH /users/me/profile."""
+
+    nickname: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    photo_url: Optional[str] = Field(default=None, max_length=512)
+
+
 class UserProfileResponse(BaseModel):
     """User profile returned by the API."""
 
@@ -53,6 +60,8 @@ class UserProfileResponse(BaseModel):
     calendar_type: Optional[str] = None
     is_leap_month: bool
     gender: Optional[str] = None
+    nickname: Optional[str] = None
+    photo_url: Optional[str] = None
     is_paid: bool
     created_at: datetime
     updated_at: datetime

@@ -4,7 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import BirthDataCreate, BirthDataUpdate, UserProfileResponse
+from app.schemas.user import (
+    BirthDataCreate,
+    BirthDataUpdate,
+    ProfileUpdate,
+    UserProfileResponse,
+)
 from app.services import users as users_service
 
 router = APIRouter()
@@ -31,3 +36,12 @@ async def patch_birth_data(
     current_user: User = Depends(get_current_user),
 ):
     return await users_service.patch_birth_data(current_user, data, db)
+
+
+@router.patch("/me/profile", response_model=UserProfileResponse)
+async def patch_profile(
+    data: ProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await users_service.patch_profile(current_user, data, db)

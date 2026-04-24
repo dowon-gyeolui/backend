@@ -15,10 +15,12 @@ Cost: ~$0.001 per call at gpt-4o-mini prices (2~4 chunks × 500 tokens).
 
 from __future__ import annotations
 
+import json
 import os
+import re
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Optional
 
 from app.schemas.saju import SajuResponse
 
@@ -132,4 +134,126 @@ def generate_saju_interpretation(
         return text or None
     except Exception:
         # Interpretation is best-effort. Never fail the whole /saju/me call.
+        return None
+
+
+# --- Pair recommendation prompt (post-match) ------------------------
+
+_PAIR_SYSTEM_PROMPT = (
+    "당신은 두 사용자의 사주 궁합을 분석하여 대화 주제와 데이트 팁을 "
+    "한국어로 제안하는 도우미입니다.\n"
+    "\n"
+    "반드시 지킬 규칙:\n"
+    "- '검색된 원전 구절' 내용만 근거로 사용하고, 원전에 없는 내용은 추측하지 마십시오.\n"
+    "- 건강·수명·파탄·불륜 등 확정적 예언은 금지합니다.\n"
+    "- '~할 것이다' 대신 '~경향이 있습니다', '~로 해석됩니다' 같은 완곡한 표현을 사용하십시오.\n"
+    "- 각 항목은 간결한 한국어 한 문장 (20~60자) 으로 작성하십시오.\n"
+    "\n"
+    "반드시 아래 JSON 스키마만 출력하십시오. 다른 설명·도입부·마크다운 금지:\n"
+    "{\n"
+    '  "strengths": ["...", "...", "..."],              // 이 커플의 강점 1~3개\n'
+    '  "cautions": ["...", "..."],                       // 유의점 1~3개\n'
+    '  "conversation_starters": ["...", "...", "..."],  // 대화 주제 제안 2~3개\n'
+    '  "summary": "2~3 문장의 한국어 요약."\n'
+    "}\n"
+    "\n"
+    "원전 구절과 사주 결과가 명확한 연결점이 없다면 빈 배열과 빈 summary를 "
+    "포함한 JSON 을 반환하십시오."
+)
+
+
+def _build_pair_message(
+    *,
+    score: int,
+    user_a_info: dict,
+    user_b_info: dict,
+    passages: list[RetrievedPassage],
+) -> str:
+    lines = [
+        "[궁합 분석 입력]",
+        f"- 궁합 점수: {score} / 100",
+        f"- 사용자 A: 일주 {user_a_info.get('day_pillar')}"
+        f" · 주요 오행 {user_a_info.get('dominant_element') or '미상'}"
+        f" · 성별 {user_a_info.get('gender') or '미상'}",
+        f"- 사용자 B: 일주 {user_b_info.get('day_pillar')}"
+        f" · 주요 오행 {user_b_info.get('dominant_element') or '미상'}"
+        f" · 성별 {user_b_info.get('gender') or '미상'}",
+        "",
+        "[검색된 원전 구절]",
+    ]
+    for i, p in enumerate(passages, start=1):
+        content = p.content if len(p.content) <= 600 else p.content[:600] + "…"
+        lines.append(f"{i}. {p.citation}")
+        lines.append(f"   {content}")
+    lines.append("")
+    lines.append("위 원전 구절을 근거로 JSON 을 반환하십시오.")
+    return "\n".join(lines)
+
+
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+
+
+def _parse_pair_json(text: str) -> Optional[dict[str, Any]]:
+    """Best-effort JSON extraction — tolerates code fences and trailing text."""
+    if not text:
+        return None
+    text = text.strip()
+    m = _JSON_FENCE_RE.search(text)
+    if m:
+        text = m.group(1)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        # Last resort — find first '{' and matching outermost '}'
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return None
+        try:
+            data = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def generate_pair_recommendation(
+    *,
+    score: int,
+    user_a_info: dict,
+    user_b_info: dict,
+    passages: list[RetrievedPassage],
+    model: str = _MODEL,
+) -> Optional[dict[str, Any]]:
+    """Generate structured pair recommendation. Returns dict or None on failure.
+
+    Dict keys: strengths, cautions, conversation_starters, summary.
+    """
+    if not passages:
+        return None
+    try:
+        resp = _client().responses.create(
+            model=model,
+            instructions=_PAIR_SYSTEM_PROMPT,
+            input=_build_pair_message(
+                score=score,
+                user_a_info=user_a_info,
+                user_b_info=user_b_info,
+                passages=passages,
+            ),
+            max_output_tokens=_MAX_OUTPUT_TOKENS,
+        )
+        text = _extract_output_text(resp)
+        parsed = _parse_pair_json(text)
+        if parsed is None:
+            return None
+        # Normalize — ensure list fields are lists, summary is str.
+        return {
+            "strengths": list(parsed.get("strengths") or []),
+            "cautions": list(parsed.get("cautions") or []),
+            "conversation_starters": list(parsed.get("conversation_starters") or []),
+            "summary": parsed.get("summary") or None,
+        }
+    except Exception:
         return None

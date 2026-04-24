@@ -16,12 +16,18 @@ class User(Base):
     # Nullable until Kakao OAuth is wired up
     kakao_id = Column(String, unique=True, nullable=True, index=True)
 
+    # --- Saju inputs ---
     birth_date = Column(Date, nullable=True)
     birth_time = Column(String(5), nullable=True)      # "HH:MM"
     calendar_type = Column(String(10), nullable=True)  # "solar" | "lunar"
     is_leap_month = Column(Boolean, default=False, nullable=False)
     gender = Column(String(10), nullable=True)          # "male" | "female"
 
+    # --- Profile card fields (shown in match cards) ---
+    nickname = Column(String(50), nullable=True)
+    photo_url = Column(String(512), nullable=True)
+
+    # --- Payment / flags ---
     is_paid = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)

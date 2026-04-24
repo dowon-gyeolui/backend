@@ -17,6 +17,7 @@ to the `summary` once per-pair RAG cost is acceptable.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Optional
 
 from sqlalchemy import select
@@ -158,6 +159,18 @@ def _build_summary(saju_a, saju_b, score: int) -> str:
 
 # --- candidate matching ----------------------------------------------
 
+def _compute_age(birth_date: Optional[date]) -> Optional[int]:
+    """International age as of today."""
+    if birth_date is None:
+        return None
+    today = date.today()
+    return (
+        today.year
+        - birth_date.year
+        - ((today.month, today.day) < (birth_date.month, birth_date.day))
+    )
+
+
 async def find_matches(
     current_user: User,
     db: AsyncSession,
@@ -166,6 +179,8 @@ async def find_matches(
     """Score every other user (with birth_date set) and return top_k candidates.
 
     Free-tier callers get blinded profiles; paid-tier callers get extra fields.
+    Profile card fields (nickname, age, gender) are always visible so the
+    UI can render a usable card even under the blind policy.
     """
     stmt = (
         select(User)
@@ -185,26 +200,21 @@ async def find_matches(
     is_blinded = not current_user.is_paid
     results: list[MatchCandidate] = []
     for candidate, cs in top:
-        if is_blinded:
-            results.append(
-                MatchCandidate(
-                    user_id=candidate.id,
-                    score=cs.score,
-                    gender=candidate.gender,
-                    is_blinded=True,
-                )
-            )
-        else:
+        card = MatchCandidate(
+            user_id=candidate.id,
+            score=cs.score,
+            nickname=candidate.nickname,
+            age=_compute_age(candidate.birth_date),
+            gender=candidate.gender,
+            is_blinded=is_blinded,
+        )
+        if not is_blinded:
             saju = calculate_saju(candidate)
             dom = _dominant_element(saju.element_profile)
-            results.append(
-                MatchCandidate(
-                    user_id=candidate.id,
-                    score=cs.score,
-                    gender=candidate.gender,
-                    is_blinded=False,
-                    birth_year=candidate.birth_date.year if candidate.birth_date else None,
-                    dominant_element=_ELEMENT_KO[dom] if dom else None,
-                )
+            card.photo_url = candidate.photo_url
+            card.birth_year = (
+                candidate.birth_date.year if candidate.birth_date else None
             )
+            card.dominant_element = _ELEMENT_KO[dom] if dom else None
+        results.append(card)
     return results
