@@ -337,7 +337,6 @@ async def enrich_with_detailed_interpretation(
         base.personality = sections.get("personality", "")
         base.love = sections.get("love", "")
         base.wealth = sections.get("wealth", "")
-        base.health = sections.get("health", "")
         base.advice = sections.get("advice", "")
 
     return base

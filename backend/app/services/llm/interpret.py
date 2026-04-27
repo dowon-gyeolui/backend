@@ -236,9 +236,10 @@ _DETAILED_SYSTEM_PROMPT = (
     '  "personality": "성격에 대한 2~3문장 해석.",\n'
     '  "love": "대인관계·연애운에 대한 2~3문장 해석.",\n'
     '  "wealth": "재물운에 대한 2~3문장 해석.",\n'
-    '  "health": "건강에 대한 2~3문장 해석.",\n'
     '  "advice": "사용자에게 도움이 되는 행동/방향 추천 2~3문장."\n'
     "}\n"
+    "\n"
+    "건강·질병·수명에 대한 언급은 절대 포함하지 마십시오.\n"
     "\n"
     "원전 구절이 사주와 명확한 연결점이 없는 카테고리는 빈 문자열을 반환해도 됩니다."
 )
@@ -273,7 +274,6 @@ def generate_detailed_interpretation(
             "personality": str(parsed.get("personality") or ""),
             "love": str(parsed.get("love") or ""),
             "wealth": str(parsed.get("wealth") or ""),
-            "health": str(parsed.get("health") or ""),
             "advice": str(parsed.get("advice") or ""),
         }
     except Exception:

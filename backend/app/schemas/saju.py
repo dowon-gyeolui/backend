@@ -62,16 +62,18 @@ class SajuResponse(BaseModel):
 
 
 class DetailedSajuResponse(SajuResponse):
-    """SajuResponse + 5-section LLM interpretation (성격/연애/재물/건강/조언).
+    """SajuResponse + 4-section LLM interpretation (성격/연애/재물/조언).
 
     Each section is a 2-3 sentence Korean interpretation grounded in the
     same RAG passages used for `interpretation`. Sections may be empty
     strings when the LLM failed for that category specifically; the
     frontend should render a graceful placeholder for empties.
+
+    Health was intentionally removed — fortune-telling shouldn't make
+    medical claims, and we don't want the user to act on them.
     """
 
     personality: str = ""
     love: str = ""
     wealth: str = ""
-    health: str = ""
     advice: str = ""
