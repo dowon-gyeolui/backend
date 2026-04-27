@@ -24,7 +24,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
-from app.schemas.compatibility import CompatibilityScore, MatchCandidate
+from app.schemas.compatibility import (
+    CompatibilityReport,
+    CompatibilityScore,
+    MatchCandidate,
+)
 from app.services.saju import (
     _ELEMENT_KO,
     _STEM_ELEMENT,
@@ -154,6 +158,191 @@ def _build_summary(saju_a, saju_b, score: int) -> str:
     return (
         f"[임시 분석] 일주 {a_day} ↔ {b_day}, 궁합 점수 {score}점.{dom_bit} "
         f"정확한 해석은 원전 기반 분석 연동 시 제공될 예정입니다."
+    )
+
+
+# --- 운명 분석 리포트 --------------------------------------------------
+
+def _name_or_default(user: User) -> str:
+    return user.nickname or f"사용자 {user.id}"
+
+
+def _branch_relation(a_branch_ko: Optional[str], b_branch_ko: Optional[str]) -> str:
+    """Return 'trine' | 'clash' | 'same' | 'neutral' for two day-branches."""
+    a = _BRANCH_KO_TO_ZH.get(a_branch_ko or "")
+    b = _BRANCH_KO_TO_ZH.get(b_branch_ko or "")
+    if not a or not b:
+        return "neutral"
+    if a == b:
+        return "same"
+    pair = frozenset({a, b})
+    if any(pair <= trine for trine in _TRINES):
+        return "trine"
+    if pair in _CLASH_PAIRS:
+        return "clash"
+    return "neutral"
+
+
+def _stem_relation(a_stem_el: Optional[str], b_stem_el: Optional[str]) -> str:
+    """Return 'same' | 'produce' | 'control' | 'neutral'."""
+    if not a_stem_el or not b_stem_el:
+        return "neutral"
+    if a_stem_el == b_stem_el:
+        return "same"
+    if _produces(a_stem_el, b_stem_el) or _produces(b_stem_el, a_stem_el):
+        return "produce"
+    if _controls(a_stem_el, b_stem_el) or _controls(b_stem_el, a_stem_el):
+        return "control"
+    return "neutral"
+
+
+def _build_synergy_line(
+    name_a: str, name_b: str,
+    a_dom: Optional[str], b_dom: Optional[str],
+    stem_rel: str, branch_rel: str,
+) -> str:
+    """First bullet — what makes the pairing work."""
+    a_ko = _ELEMENT_KO.get(a_dom or "") if a_dom else None
+    b_ko = _ELEMENT_KO.get(b_dom or "") if b_dom else None
+
+    if a_dom and b_dom and a_dom != b_dom and stem_rel == "produce":
+        return (
+            f"{name_a}님과 {name_b}님은 서로 "
+            f"{a_ko}의 기운과 {b_ko}의 기운을 보충하며 "
+            f"장기 연애 가능성이 높은 궁합입니다."
+        )
+    if a_dom and b_dom and a_dom == b_dom:
+        return (
+            f"두 분 모두 {a_ko}의 기운이 두드러져 "
+            f"공통 관심사와 가치관 위에서 빠르게 가까워지는 궁합입니다."
+        )
+    if branch_rel == "trine":
+        return (
+            f"{name_a}님과 {name_b}님의 일주가 三合(삼합) 관계로, "
+            f"안정적이고 오래 가는 인연이 될 가능성이 높습니다."
+        )
+    if stem_rel == "control" and a_ko and b_ko:
+        return (
+            f"{a_ko}와 {b_ko}의 기운이 서로 견제하지만, "
+            f"그만큼 서로의 부족한 부분을 채워줄 수 있는 관계입니다."
+        )
+    return (
+        f"{name_a}님과 {name_b}님은 서로 다른 기운을 가져 "
+        f"새로운 자극과 변화의 기회가 많은 궁합입니다."
+    )
+
+
+def _build_caution_line(
+    a_dom: Optional[str], b_dom: Optional[str],
+    stem_rel: str, branch_rel: str,
+) -> str:
+    """Second bullet — what to watch out for."""
+    a_ko = _ELEMENT_KO.get(a_dom or "") if a_dom else None
+    b_ko = _ELEMENT_KO.get(b_dom or "") if b_dom else None
+
+    if branch_rel == "clash":
+        return (
+            "다만 일주의 지지가 六冲(육충) 관계라 "
+            "감정이 격해지면 충돌이 잦을 수 있어요. "
+            "갈등 시 한 박자 쉬어가는 대화가 중요합니다."
+        )
+    if stem_rel == "control" and a_ko and b_ko:
+        return (
+            f"반대로 {a_ko}와 {b_ko}의 기운이 부딪쳐 가끔 충돌할 가능성이 있습니다. "
+            "연애 전 가치관·생활 패턴을 확실히 맞춰보고 가세요."
+        )
+    if a_dom == "fire" or b_dom == "fire":
+        return (
+            "다만 화(火)의 기운이 강해 감정 표현이 직설적일 수 있어요. "
+            "표현 강도를 서로 맞춰가는 대화가 필요합니다."
+        )
+    return (
+        "다만 처음에는 표현 방식이 달라 어색할 수 있으니, "
+        "초반 한 달 동안 솔직한 대화로 서로의 페이스를 맞춰보세요."
+    )
+
+
+_SCORE_TAG: list[tuple[int, str]] = [
+    (85, "#찰떡궁합"),
+    (70, "#호감궁합"),
+    (50, "#노력형궁합"),
+    (0,  "#성장궁합"),
+]
+
+
+def _score_keyword(score: int) -> str:
+    for threshold, tag in _SCORE_TAG:
+        if score >= threshold:
+            return tag
+    return "#성장궁합"
+
+
+def _theme_keyword(
+    stem_rel: str, branch_rel: str,
+    a_dom: Optional[str], b_dom: Optional[str],
+) -> str:
+    if branch_rel == "trine":
+        return "#오래가는_인연"
+    if branch_rel == "clash":
+        return "#서로_배워가는_사이"
+    if stem_rel == "produce":
+        return "#솔직한_대화"
+    if stem_rel == "same" and a_dom == b_dom:
+        return "#닮은꼴"
+    if stem_rel == "control":
+        return "#균형_맞추기"
+    return "#새로운_자극"
+
+
+def build_report(user_a: User, user_b: User) -> CompatibilityReport:
+    """Build a 운명 분석 리포트 for the chat drawer.
+
+    Reuses the same metric sources as `calculate()` but renders them as
+    natural-language bullets + hashtag chips instead of a raw score.
+    """
+    saju_a = calculate_saju(user_a)
+    saju_b = calculate_saju(user_b)
+
+    a_day = saju_a.pillars[2]
+    b_day = saju_b.pillars[2]
+    a_stem_el = _STEM_ELEMENT.get(a_day.stem)
+    b_stem_el = _STEM_ELEMENT.get(b_day.stem)
+    a_dom = _dominant_element(saju_a.element_profile)
+    b_dom = _dominant_element(saju_b.element_profile)
+
+    stem_rel = _stem_relation(a_stem_el, b_stem_el)
+    branch_rel = _branch_relation(a_day.branch, b_day.branch)
+
+    score_obj = calculate(user_a, user_b)
+
+    name_a = _name_or_default(user_a)
+    name_b = _name_or_default(user_b)
+
+    synergy = _build_synergy_line(name_a, name_b, a_dom, b_dom, stem_rel, branch_rel)
+    caution = _build_caution_line(a_dom, b_dom, stem_rel, branch_rel)
+
+    # Keyword 1 — counterpart's dominant element (= "what their saju brings").
+    if b_dom:
+        elem_keyword = f"#{_ELEMENT_KO[b_dom]}의_기운"
+    elif a_dom:
+        elem_keyword = f"#{_ELEMENT_KO[a_dom]}의_기운"
+    else:
+        elem_keyword = "#오행균형"
+
+    keywords = [
+        elem_keyword,
+        _score_keyword(score_obj.score),
+        _theme_keyword(stem_rel, branch_rel, a_dom, b_dom),
+    ]
+
+    return CompatibilityReport(
+        user_a_id=user_a.id,
+        user_b_id=user_b.id,
+        nickname_a=user_a.nickname,
+        nickname_b=user_b.nickname,
+        score=score_obj.score,
+        summary_lines=[synergy, caution],
+        keywords=keywords,
     )
 
 

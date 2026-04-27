@@ -13,6 +13,27 @@ class CompatibilityScore(BaseModel):
     summary: Optional[str] = None
 
 
+class CompatibilityReport(BaseModel):
+    """Drawer-style 운명 분석 리포트 for the chat header.
+
+    Two narrative bullets (synergy + caution) + 3 hashtag keywords feed the
+    Figma drawer at node 37:1657. CTA gating is a frontend concern.
+    """
+
+    user_a_id: int
+    user_b_id: int
+    nickname_a: Optional[str] = None
+    nickname_b: Optional[str] = None
+    score: int  # 0~100
+
+    # First line is the synergy/strength; second is the caution/risk. Two
+    # bullets line up with Figma's two ✦-prefixed paragraphs.
+    summary_lines: list[str]
+
+    # Three hashtag-style chips (e.g. "#금의_기운", "#찰떡궁합", "#솔직한_대화")
+    keywords: list[str]
+
+
 class MatchCandidate(BaseModel):
     """One match candidate shown as a profile card.
 
