@@ -218,6 +218,68 @@ def _parse_pair_json(text: str) -> Optional[dict[str, Any]]:
     return data
 
 
+# --- Detailed self-saju interpretation (multi-section) -------------
+
+_DETAILED_SYSTEM_PROMPT = (
+    "당신은 사용자의 사주 팔자와 원전 문헌의 관련 구절을 바탕으로 "
+    "한국어 심층 해석을 작성하는 도우미입니다.\n"
+    "\n"
+    "반드시 지킬 규칙:\n"
+    "- '검색된 원전 구절' 내용만 근거로 사용하고, 원전에 없는 내용은 추측하지 마십시오.\n"
+    "- 사용자의 일주는 '[사주 결과]'에 적힌 값 그대로 지칭해야 합니다.\n"
+    "- 건강·수명·재물·배우자에 대한 확정적 예언은 금지합니다.\n"
+    "- '~할 것이다' 대신 '~경향이 있습니다', '~로 해석됩니다' 같은 완곡한 표현을 사용하십시오.\n"
+    "- 각 카테고리 본문은 2~3 문장 (60~150자) 의 한국어로 작성하십시오.\n"
+    "\n"
+    "반드시 아래 JSON 스키마만 출력하십시오. 다른 설명·도입부·마크다운 금지:\n"
+    "{\n"
+    '  "personality": "성격에 대한 2~3문장 해석.",\n'
+    '  "love": "대인관계·연애운에 대한 2~3문장 해석.",\n'
+    '  "wealth": "재물운에 대한 2~3문장 해석.",\n'
+    '  "health": "건강에 대한 2~3문장 해석.",\n'
+    '  "advice": "사용자에게 도움이 되는 행동/방향 추천 2~3문장."\n'
+    "}\n"
+    "\n"
+    "원전 구절이 사주와 명확한 연결점이 없는 카테고리는 빈 문자열을 반환해도 됩니다."
+)
+
+
+def generate_detailed_interpretation(
+    saju: SajuResponse,
+    passages: list[RetrievedPassage],
+    *,
+    model: str = _MODEL,
+) -> Optional[dict[str, str]]:
+    """Generate a 5-section structured interpretation.
+
+    Sections: personality / love / wealth / health / advice.
+    Returns dict with those 5 keys (some values may be empty strings) or
+    None on failure / no passages.
+    """
+    if not passages:
+        return None
+    try:
+        resp = _client().responses.create(
+            model=model,
+            instructions=_DETAILED_SYSTEM_PROMPT,
+            input=_build_user_message(saju, passages),
+            max_output_tokens=1200,
+        )
+        text = _extract_output_text(resp)
+        parsed = _parse_pair_json(text)  # reuse the same JSON extractor
+        if parsed is None:
+            return None
+        return {
+            "personality": str(parsed.get("personality") or ""),
+            "love": str(parsed.get("love") or ""),
+            "wealth": str(parsed.get("wealth") or ""),
+            "health": str(parsed.get("health") or ""),
+            "advice": str(parsed.get("advice") or ""),
+        }
+    except Exception:
+        return None
+
+
 def generate_pair_recommendation(
     *,
     score: int,

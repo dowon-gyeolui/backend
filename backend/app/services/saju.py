@@ -275,3 +275,69 @@ async def enrich_with_interpretation(
     saju.interpretation = generate_saju_interpretation(saju, ordered_passages)
 
     return saju
+
+
+async def enrich_with_detailed_interpretation(
+    saju: "SajuResponse",
+    db: "AsyncSession",
+):
+    """Like ``enrich_with_interpretation`` but produces a 5-section
+    interpretation (성격/연애/재물/건강/조언). Returns DetailedSajuResponse.
+
+    Falls back to empty section strings when the LLM fails or no passages
+    match — the frontend renders graceful placeholders for empties.
+    """
+    from app.schemas.knowledge import KnowledgeQuery
+    from app.schemas.saju import DetailedSajuResponse
+    from app.services.knowledge.retrieval import retrieve
+    from app.services.llm.interpret import (
+        RetrievedPassage,
+        generate_detailed_interpretation,
+    )
+
+    queries = _build_retrieval_queries(saju)
+    passages_by_citation: dict[str, "RetrievedPassage"] = {}
+    citations: list[str] = []
+
+    for q in queries:
+        try:
+            results = await retrieve(KnowledgeQuery(query=q, top_k=3), db)
+        except Exception:
+            continue
+        for r in results:
+            if r.match_reason != "vector_similarity" or r.chunk.id == 0:
+                continue
+            citations.append(r.source_citation)
+            if r.source_citation not in passages_by_citation:
+                passages_by_citation[r.source_citation] = RetrievedPassage(
+                    citation=r.source_citation,
+                    content=r.chunk.content or "",
+                )
+
+    seen: set[str] = set()
+    unique_citations: list[str] = []
+    for c in citations:
+        if c not in seen:
+            seen.add(c)
+            unique_citations.append(c)
+
+    base = DetailedSajuResponse(
+        **saju.model_dump(),
+    )
+
+    if not unique_citations:
+        return base  # all sections stay empty, status pending
+
+    base.interpretation_sources = unique_citations
+    base.interpretation_status = "ready"
+
+    ordered_passages = [passages_by_citation[c] for c in unique_citations]
+    sections = generate_detailed_interpretation(saju, ordered_passages)
+    if sections:
+        base.personality = sections.get("personality", "")
+        base.love = sections.get("love", "")
+        base.wealth = sections.get("wealth", "")
+        base.health = sections.get("health", "")
+        base.advice = sections.get("advice", "")
+
+    return base

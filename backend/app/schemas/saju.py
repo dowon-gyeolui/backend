@@ -59,3 +59,19 @@ class SajuResponse(BaseModel):
     interpretation_status: Literal["pending", "ready"] = "pending"
     interpretation_sources: list[str] = []
     interpretation: Optional[str] = None
+
+
+class DetailedSajuResponse(SajuResponse):
+    """SajuResponse + 5-section LLM interpretation (성격/연애/재물/건강/조언).
+
+    Each section is a 2-3 sentence Korean interpretation grounded in the
+    same RAG passages used for `interpretation`. Sections may be empty
+    strings when the LLM failed for that category specifically; the
+    frontend should render a graceful placeholder for empties.
+    """
+
+    personality: str = ""
+    love: str = ""
+    wealth: str = ""
+    health: str = ""
+    advice: str = ""
