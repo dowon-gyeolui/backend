@@ -5,12 +5,21 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
+_MBTI_RE = re.compile(r"^[EI][NS][TF][JP]$", re.IGNORECASE)
 
 
 def _validate_time(v: Optional[str]) -> Optional[str]:
     if v is not None and not _TIME_RE.match(v):
         raise ValueError("birth_time must be in HH:MM format (e.g. 14:30)")
     return v
+
+
+def _validate_mbti(v: Optional[str]) -> Optional[str]:
+    if v is None or v == "":
+        return None
+    if not _MBTI_RE.match(v):
+        raise ValueError("mbti must be a 4-letter MBTI code (e.g. ENFP)")
+    return v.upper()
 
 
 class BirthDataCreate(BaseModel):
@@ -44,10 +53,30 @@ class BirthDataUpdate(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    """Partial profile update — used for PATCH /users/me/profile."""
+    """Partial profile update — used for PATCH /users/me/profile.
+
+    Covers card-display fields (nickname/photo) plus the optional
+    self-introduction (bio) and the structured "기본 정보" group used by the
+    profile-completion gauge: height, MBTI, job, region, smoking, drinking,
+    religion.
+    """
 
     nickname: Optional[str] = Field(default=None, min_length=1, max_length=50)
     photo_url: Optional[str] = Field(default=None, max_length=512)
+    bio: Optional[str] = Field(default=None, max_length=120)
+
+    height_cm: Optional[int] = Field(default=None, ge=100, le=250)
+    mbti: Optional[str] = Field(default=None, max_length=4)
+    job: Optional[str] = Field(default=None, max_length=50)
+    region: Optional[str] = Field(default=None, max_length=50)
+    smoking: Optional[Literal["안함", "전자담배", "흡연"]] = None
+    drinking: Optional[Literal["안함", "가끔", "자주"]] = None
+    religion: Optional[Literal["무교", "기독교", "불교", "천주교", "기타"]] = None
+
+    @field_validator("mbti")
+    @classmethod
+    def check_mbti(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_mbti(v)
 
 
 class UserProfileResponse(BaseModel):
@@ -62,6 +91,18 @@ class UserProfileResponse(BaseModel):
     gender: Optional[str] = None
     nickname: Optional[str] = None
     photo_url: Optional[str] = None
+
+    bio: Optional[str] = None
+
+    # 기본 정보
+    height_cm: Optional[int] = None
+    mbti: Optional[str] = None
+    job: Optional[str] = None
+    region: Optional[str] = None
+    smoking: Optional[str] = None
+    drinking: Optional[str] = None
+    religion: Optional[str] = None
+
     is_paid: bool
     created_at: datetime
     updated_at: datetime
