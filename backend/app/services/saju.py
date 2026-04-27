@@ -128,20 +128,48 @@ def _korean_summary(ep: ElementProfile) -> str:
 
 
 def calculate(user: User) -> SajuResponse:
-    """Derive a placeholder saju result from the user's stored birth data.
+    """Real 60-cycle saju calculation backed by ``services.saju_engine``.
 
+    Computes:
+      - 년주: 입춘(立春) 기준
+      - 월주: 12절(節)로 月支 + 五虎遁으로 月干
+      - 일주: 1900-01-31 갑진일 기준점에서 일수 차이로 60갑자 순환
+      - 시주: 12 시진 매핑 + 五鼠遁으로 時干
+    Element distribution counts both 천간(stem) and 지지(branch) — 8자 분석.
     Raises ValueError if birth_date is not set (caller should return HTTP 400).
     """
     if user.birth_date is None:
         raise ValueError("birth_date is required for saju calculation")
 
-    year_p = _year_pillar(user.birth_date.year)
-    month_p = _month_pillar(user.birth_date.year, user.birth_date.month)
-    day_p = _day_pillar(user.birth_date)
-    time_p = _time_pillar(user.birth_time, day_p.stem)
+    from app.services.saju_engine import (
+        calculate_four_pillars,
+        element_distribution_from_pillars,
+    )
 
-    pillars = [year_p, month_p, day_p, time_p]
-    ep = _element_profile(pillars)
+    calendar = user.calendar_type if user.calendar_type in ("solar", "lunar") else "solar"
+    fp = calculate_four_pillars(
+        user.birth_date,
+        user.birth_time,
+        calendar_type=calendar,  # type: ignore[arg-type]
+        is_leap_month=user.is_leap_month,
+    )
+
+    def to_pillar(label: str, p: tuple[str, str] | None) -> Pillar:
+        if p is None:
+            # 시주 미상
+            return Pillar(label=label, stem=_UNKNOWN, branch=_UNKNOWN, combined=_UNKNOWN)
+        stem, branch = p
+        return Pillar(label=label, stem=stem, branch=branch, combined=stem + branch)
+
+    pillars = [
+        to_pillar("년주", fp.year),
+        to_pillar("월주", fp.month),
+        to_pillar("일주", fp.day),
+        to_pillar("시주", fp.time),
+    ]
+
+    counts = element_distribution_from_pillars(fp)
+    ep = ElementProfile(**counts)
 
     return SajuResponse(
         user_id=user.id,
