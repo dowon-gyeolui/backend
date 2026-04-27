@@ -6,7 +6,15 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.routers import auth, compatibility, knowledge, recommendations, saju, users
+from app.routers import (
+    auth,
+    chat,
+    compatibility,
+    knowledge,
+    recommendations,
+    saju,
+    users,
+)
 
 
 @asynccontextmanager
@@ -50,6 +58,7 @@ app.include_router(saju.router, prefix="/saju", tags=["saju"])
 app.include_router(compatibility.router, prefix="/compatibility", tags=["compatibility"])
 app.include_router(recommendations.router, prefix="/recommendations", tags=["recommendations"])
 app.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
+app.include_router(chat.router, prefix="/chat", tags=["chat"])
 
 
 @app.get("/health", tags=["system"])

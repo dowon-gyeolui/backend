@@ -187,6 +187,13 @@ async def find_matches(
         .where(User.id != current_user.id)
         .where(User.birth_date.is_not(None))
     )
+    # Default dating-app behaviour: prefer opposite-gender candidates.
+    # When the current user has no gender set we don't filter — show all.
+    if current_user.gender == "male":
+        stmt = stmt.where(User.gender == "female")
+    elif current_user.gender == "female":
+        stmt = stmt.where(User.gender == "male")
+
     candidates = (await db.execute(stmt)).scalars().all()
 
     scored: list[tuple[User, CompatibilityScore]] = []
