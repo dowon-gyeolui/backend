@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from app.schemas.user import (
     UserProfileResponse,
 )
 from app.services import users as users_service
+from app.services.storage import StorageNotConfiguredError, upload_image
 
 router = APIRouter()
 
@@ -46,6 +47,56 @@ async def patch_profile(
     current_user: User = Depends(get_current_user),
 ):
     return await users_service.patch_profile(current_user, data, db)
+
+
+# Hard-cap profile photos at 8 MB. Cloudinary's free tier has bandwidth
+# limits and there's no upside to letting users upload 50 MB selfies.
+_MAX_PHOTO_BYTES = 8 * 1024 * 1024
+
+_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+
+
+@router.post("/me/photo", response_model=UserProfileResponse)
+async def upload_my_photo(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """프로필 사진 업로드 — Cloudinary 로 올리고 photo_url 갱신.
+
+    multipart/form-data 의 `file` 필드로 이미지 파일을 받는다. 8MB 초과,
+    이미지가 아닌 MIME, 또는 Cloudinary 자격증명 미설정 시 4xx/5xx 반환.
+    """
+    if file.content_type not in _ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"이미지 형식만 업로드 가능합니다 (받은 형식: {file.content_type}).",
+        )
+
+    raw = await file.read()
+    if len(raw) > _MAX_PHOTO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"파일이 너무 큽니다. {_MAX_PHOTO_BYTES // (1024 * 1024)}MB 이하로 올려주세요.",
+        )
+
+    try:
+        url = upload_image(raw, public_id=f"user_{current_user.id}")
+    except StorageNotConfiguredError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"이미지 호스팅 서버 오류: {e}",
+        ) from e
+
+    current_user.photo_url = url
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
 
 
 @router.post("/me/upgrade-demo", response_model=UserProfileResponse)
