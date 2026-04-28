@@ -412,5 +412,6 @@ async def find_matches(
                 candidate.birth_date.year if candidate.birth_date else None
             )
             card.dominant_element = _ELEMENT_KO[dom] if dom else None
+            card.mbti = candidate.mbti
         results.append(card)
     return results

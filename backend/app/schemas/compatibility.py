@@ -62,3 +62,4 @@ class MatchCandidate(BaseModel):
     photo_url: Optional[str] = None
     birth_year: Optional[int] = None
     dominant_element: Optional[str] = None
+    mbti: Optional[str] = None
