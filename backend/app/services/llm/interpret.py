@@ -280,6 +280,111 @@ def generate_detailed_interpretation(
         return None
 
 
+# --- 자미두수 interpretation -----------------------------------------
+
+_JAMIDUSU_SYSTEM_PROMPT = (
+    "당신은 사용자의 사주 팔자 정보를 바탕으로 "
+    "자미두수(紫微斗數) 12궁과 14주성 관점에서 한국어 풀이를 작성하는 도우미입니다.\n"
+    "\n"
+    "반드시 지킬 규칙:\n"
+    "- 사용자의 일주·오행·생년월일은 [사주 결과]에 적힌 그대로 활용하십시오.\n"
+    "- 건강·수명·질병·파탄·불륜에 대한 확정적 예언은 금지합니다.\n"
+    "- '~할 것이다' 대신 '~경향이 있습니다', '~로 해석됩니다' 같은 완곡한 표현을 사용하십시오.\n"
+    "- 12궁 description 은 각각 한 문장 (30~80자) 으로 간결히 작성하십시오.\n"
+    "- main_stars_summary 와 overview 는 각각 2~3 문장 (80~150자) 으로 작성하십시오.\n"
+    "\n"
+    "반드시 아래 JSON 스키마만 출력하십시오. 다른 설명·도입부·마크다운 금지:\n"
+    "{\n"
+    '  "overview": "사용자의 자미두수 전반에 대한 2~3문장 요약",\n'
+    '  "palaces": [\n'
+    '    {"name": "命宮 (명궁)",   "description": "..."},\n'
+    '    {"name": "兄弟宮 (형제궁)", "description": "..."},\n'
+    '    {"name": "夫妻宮 (부처궁)", "description": "..."},\n'
+    '    {"name": "子女宮 (자녀궁)", "description": "..."},\n'
+    '    {"name": "財帛宮 (재백궁)", "description": "..."},\n'
+    '    {"name": "疾厄宮 (질액궁)", "description": "..."},\n'
+    '    {"name": "遷移宮 (천이궁)", "description": "..."},\n'
+    '    {"name": "交友宮 (교우궁)", "description": "..."},\n'
+    '    {"name": "官祿宮 (관록궁)", "description": "..."},\n'
+    '    {"name": "田宅宮 (전택궁)", "description": "..."},\n'
+    '    {"name": "福德宮 (복덕궁)", "description": "..."},\n'
+    '    {"name": "父母宮 (부모궁)", "description": "..."}\n'
+    '  ],\n'
+    '  "main_stars_summary": "14주성 중 명궁·재백궁·관록궁에 위치하는 주성들이 사용자의 어떤 측면을 부각하는지 2~3문장 요약."\n'
+    "}\n"
+    "\n"
+    "12궁 모두 빠짐없이 채우되, 같은 묘사를 반복하지 마십시오."
+)
+
+
+def _build_jamidusu_message(saju: SajuResponse) -> str:
+    day_pillar = saju.pillars[2]
+    ep = saju.element_profile
+    named = [
+        ("목", ep.wood), ("화", ep.fire), ("토", ep.earth),
+        ("금", ep.metal), ("수", ep.water),
+    ]
+    dom_name, dom_count = max(named, key=lambda x: x[1])
+
+    inp = saju.input_summary
+    parts = [
+        "[사주 결과]",
+        f"- 생년월일: {inp.birth_date}"
+        + (f" {inp.birth_time}" if inp.birth_time else " (시간 모름)"),
+        f"- 양/음력: {inp.calendar_type}"
+        + (" (윤달)" if inp.is_leap_month else ""),
+        f"- 성별: {inp.gender or '미상'}",
+        f"- 일주: {day_pillar.combined} (천간 {day_pillar.stem} · 지지 {day_pillar.branch})",
+        f"- 오행 분포: 목 {ep.wood} · 화 {ep.fire} · 토 {ep.earth} · 금 {ep.metal} · 수 {ep.water}",
+    ]
+    if dom_count > 0:
+        parts.append(f"- 주요 오행: {dom_name}")
+    parts.append("")
+    parts.append(
+        "위 사주 정보를 토대로 자미두수 12궁과 14주성 관점의 풀이 JSON 을 반환하십시오."
+    )
+    return "\n".join(parts)
+
+
+def generate_jamidusu_interpretation(
+    saju: SajuResponse,
+    *,
+    model: str = _MODEL,
+) -> Optional[dict[str, Any]]:
+    """Generate 자미두수 12궁·14주성 풀이 grounded on the user's saju.
+
+    Returns a dict with keys: overview, palaces (list[{name,description}]),
+    main_stars_summary. Returns None on failure.
+    """
+    try:
+        resp = _client().responses.create(
+            model=model,
+            instructions=_JAMIDUSU_SYSTEM_PROMPT,
+            input=_build_jamidusu_message(saju),
+            max_output_tokens=2000,
+        )
+        text = _extract_output_text(resp)
+        parsed = _parse_pair_json(text)
+        if parsed is None:
+            return None
+        raw_palaces = parsed.get("palaces") or []
+        palaces: list[dict[str, str]] = []
+        for p in raw_palaces:
+            if not isinstance(p, dict):
+                continue
+            name = str(p.get("name") or "").strip()
+            desc = str(p.get("description") or "").strip()
+            if name and desc:
+                palaces.append({"name": name, "description": desc})
+        return {
+            "overview": str(parsed.get("overview") or "").strip(),
+            "palaces": palaces,
+            "main_stars_summary": str(parsed.get("main_stars_summary") or "").strip(),
+        }
+    except Exception:
+        return None
+
+
 def generate_pair_recommendation(
     *,
     score: int,

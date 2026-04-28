@@ -340,3 +340,32 @@ async def enrich_with_detailed_interpretation(
         base.advice = sections.get("advice", "")
 
     return base
+
+
+def build_jamidusu_for(user: User) -> "JamidusuResponse":
+    """자미두수 12궁·14주성 LLM 풀이.
+
+    Unlike the saju endpoints, 자미두수 doesn't use the RAG corpus —
+    we don't have classical 자미두수 passages indexed yet. The LLM is
+    seeded entirely from the user's saju, which is acceptable for the
+    paid drawer until a proper 자미두수 calc engine + corpus lands.
+    """
+    from app.schemas.saju import JamidusuPalace, JamidusuResponse
+    from app.services.llm.interpret import generate_jamidusu_interpretation
+
+    saju = calculate(user)
+    result = JamidusuResponse(user_id=user.id)
+
+    sections = generate_jamidusu_interpretation(saju)
+    if not sections:
+        return result  # status stays "pending"
+
+    result.overview = sections.get("overview", "")
+    result.main_stars_summary = sections.get("main_stars_summary", "")
+    result.palaces = [
+        JamidusuPalace(name=p["name"], description=p["description"])
+        for p in sections.get("palaces", [])
+    ]
+    if result.overview or result.palaces or result.main_stars_summary:
+        result.interpretation_status = "ready"
+    return result

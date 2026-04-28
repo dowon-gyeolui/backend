@@ -77,3 +77,28 @@ class DetailedSajuResponse(SajuResponse):
     love: str = ""
     wealth: str = ""
     advice: str = ""
+
+
+class JamidusuPalace(BaseModel):
+    """One of the 12 자미두수 palaces with its LLM-generated reading."""
+
+    name: str         # e.g. "命宮 (명궁)"
+    description: str  # one-line reading, 30~80자
+
+
+class JamidusuResponse(BaseModel):
+    """자미두수 (Zǐwēi Dòushù) interpretation for the premium drawer.
+
+    Anchored on the user's saju (we don't compute a real 자미두수 chart for
+    MVP — the LLM bridges between the two systems given saju context).
+
+    `palaces` covers the canonical 12 궁; `main_stars_summary` describes
+    where the major 14주성 cluster falls; `overview` is the closing
+    paragraph the UI shows at the top.
+    """
+
+    user_id: int
+    overview: str = ""
+    palaces: list[JamidusuPalace] = []
+    main_stars_summary: str = ""
+    interpretation_status: Literal["pending", "ready"] = "pending"
