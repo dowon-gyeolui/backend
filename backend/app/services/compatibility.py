@@ -403,11 +403,14 @@ async def find_matches(
             age=_compute_age(candidate.birth_date),
             gender=candidate.gender,
             is_blinded=is_blinded,
+            # Photo is always returned so the UI can render a blurred
+            # preview ("see what you're missing"). The frontend applies
+            # blur whenever is_blinded is True.
+            photo_url=candidate.photo_url,
         )
         if not is_blinded:
             saju = calculate_saju(candidate)
             dom = _dominant_element(saju.element_profile)
-            card.photo_url = candidate.photo_url
             card.birth_year = (
                 candidate.birth_date.year if candidate.birth_date else None
             )

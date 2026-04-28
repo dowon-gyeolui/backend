@@ -48,6 +48,23 @@ async def patch_profile(
     return await users_service.patch_profile(current_user, data, db)
 
 
+@router.post("/me/upgrade-demo", response_model=UserProfileResponse)
+async def upgrade_demo(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """데모 결제 — is_paid 플래그를 True 로 토글합니다.
+
+    실제 PG (PortOne / Toss) 연동 전까지 사용. 사용자가 매칭 모달의 결제
+    버튼을 누르면 호출되며, 다음 /compatibility/matches 응답에서
+    is_blinded=False 가 되어 사진 블러가 풀립니다.
+    """
+    current_user.is_paid = True
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_my_account(
     db: AsyncSession = Depends(get_db),
