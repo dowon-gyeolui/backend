@@ -168,6 +168,43 @@ def calculate(user: User) -> SajuResponse:
         to_pillar("시주", fp.time),
     ]
 
+    # Enrich each pillar with chart fields (십성·지장간·12운성·12신살).
+    # 일간 = pillars[2].stem; 년지 = pillars[0].branch.
+    from app.services.saju_chart import (
+        BRANCH_INFO,
+        HIDDEN_STEMS,
+        STEM_INFO,
+        branch_ten_god,
+        ten_god,
+        twelve_spirit,
+        twelve_stage,
+    )
+
+    day_stem = pillars[2].stem
+    year_branch = pillars[0].branch
+
+    for i, p in enumerate(pillars):
+        if p.stem in STEM_INFO:
+            si = STEM_INFO[p.stem]
+            p.stem_hanja = si["hanja"]
+            p.stem_element = si["element"]
+            p.stem_polarity = si["polarity"]
+            # 일주의 일간 자체는 비견(자기 자신)이라 표시하지 않음.
+            if day_stem in STEM_INFO and i != 2:
+                p.stem_ten_god = ten_god(day_stem, p.stem)
+        if p.branch in BRANCH_INFO:
+            bi = BRANCH_INFO[p.branch]
+            p.branch_hanja = bi["hanja"]
+            p.branch_animal = bi["animal"]
+            p.branch_element = bi["element"]
+            p.branch_polarity = bi["polarity"]
+            if day_stem in STEM_INFO:
+                p.branch_ten_god = branch_ten_god(day_stem, p.branch)
+                p.twelve_stage = twelve_stage(day_stem, p.branch)
+            if year_branch in BRANCH_INFO:
+                p.twelve_spirit = twelve_spirit(year_branch, p.branch)
+            p.hidden_stems = list(HIDDEN_STEMS.get(p.branch, []))
+
     counts = element_distribution_from_pillars(fp)
     ep = ElementProfile(**counts)
 

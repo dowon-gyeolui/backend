@@ -22,6 +22,22 @@ class Pillar(BaseModel):
     branch: str   # 지지 (earthly branch), e.g. "자"
     combined: str  # stem + branch, e.g. "갑자"
 
+    # 명식 chart fields — populated alongside `stem`/`branch`. Optional so
+    # legacy callers (the rule-based compatibility scorer, mostly) keep
+    # working without reading them.
+    stem_hanja: Optional[str] = None
+    stem_element: Optional[str] = None      # "wood"/"fire"/"earth"/"metal"/"water"
+    stem_polarity: Optional[str] = None     # "+" | "-"
+    stem_ten_god: Optional[str] = None
+    branch_hanja: Optional[str] = None
+    branch_animal: Optional[str] = None
+    branch_element: Optional[str] = None
+    branch_polarity: Optional[str] = None
+    branch_ten_god: Optional[str] = None
+    hidden_stems: list[str] = []
+    twelve_stage: Optional[str] = None
+    twelve_spirit: Optional[str] = None
+
 
 class ElementProfile(BaseModel):
     """오행 (five elements) count derived from the four pillars' heavenly stems.
