@@ -69,9 +69,22 @@ class ProfileUpdate(BaseModel):
     mbti: Optional[str] = Field(default=None, max_length=4)
     job: Optional[str] = Field(default=None, max_length=50)
     region: Optional[str] = Field(default=None, max_length=50)
-    smoking: Optional[Literal["안함", "전자담배", "흡연"]] = None
-    drinking: Optional[Literal["안함", "가끔", "자주"]] = None
-    religion: Optional[Literal["무교", "기독교", "불교", "천주교", "기타"]] = None
+    # Figma uses X/O for smoking and a 4-step 음주 segmented control. The
+    # legacy values ("안함"/"전자담배"/"흡연" and "안함"/"가끔"/"자주") still
+    # validate so existing rows don't trip up the PATCH endpoint, but the
+    # canonical values written by the new modal are the Figma ones.
+    smoking: Optional[
+        Literal["X", "O", "안함", "전자담배", "흡연"]
+    ] = None
+    drinking: Optional[
+        Literal[
+            "X", "1주에 1번", "1달에 1번", "자주 마심",
+            "안함", "가끔", "자주",
+        ]
+    ] = None
+    religion: Optional[
+        Literal["무교", "기독교", "불교", "천주교", "기타"]
+    ] = None
 
     @field_validator("mbti")
     @classmethod
