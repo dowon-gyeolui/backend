@@ -12,6 +12,7 @@ from app.routers import (
     compatibility,
     knowledge,
     recommendations,
+    reports,
     saju,
     users,
 )
@@ -59,6 +60,7 @@ app.include_router(compatibility.router, prefix="/compatibility", tags=["compati
 app.include_router(recommendations.router, prefix="/recommendations", tags=["recommendations"])
 app.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
+app.include_router(reports.router, prefix="/reports", tags=["reports"])
 
 
 @app.get("/health", tags=["system"])
