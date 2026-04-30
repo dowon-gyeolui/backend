@@ -11,6 +11,7 @@ Message is append-only — no edit, no delete in the MVP.
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -35,6 +36,18 @@ class ChatThread(Base):
     # Canonicalised pair: user_a_id < user_b_id always.
     user_a_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     user_b_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    # Per-user "last read message id". Used to compute unread badges.
+    # 0 means the user has read nothing yet (or hasn't opened the chat).
+    user_a_last_read_id = Column(Integer, default=0, nullable=False)
+    user_b_last_read_id = Column(Integer, default=0, nullable=False)
+
+    # Per-user soft-leave. KakaoTalk-style 1:1 leave: when one side leaves
+    # the thread disappears from THEIR list but the other side keeps the
+    # history. If they message the peer again, the leave flag is cleared
+    # by `_get_or_create_thread`.
+    user_a_left = Column(Boolean, default=False, nullable=False)
+    user_b_left = Column(Boolean, default=False, nullable=False)
 
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     # updated_at is bumped on every new message — used for thread-list ordering.

@@ -40,6 +40,14 @@ _DEV_COLUMNS: list[tuple[str, str, str]] = [
     # 채팅 미디어 첨부
     ("messages", "media_url", "VARCHAR(512)"),
     ("messages", "media_type", "VARCHAR(16)"),
+    # 채팅 읽음 상태 + 소프트 leave (per-user). 안읽은 메시지 개수 산정 +
+    # 카카오톡 스타일 채팅방 나가기. SQLite 와 PostgreSQL 둘 다에서
+    # 안전하게 동작하도록 BOOLEAN 의 default 는 FALSE 키워드 사용
+    # (SQLite 3.23+ 와 Postgres 모두 인식).
+    ("chat_threads", "user_a_last_read_id", "INTEGER NOT NULL DEFAULT 0"),
+    ("chat_threads", "user_b_last_read_id", "INTEGER NOT NULL DEFAULT 0"),
+    ("chat_threads", "user_a_left", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("chat_threads", "user_b_left", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 

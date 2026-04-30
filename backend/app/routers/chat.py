@@ -21,7 +21,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from sqlalchemy import and_, desc, or_, select
+from sqlalchemy import and_, delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
@@ -72,6 +72,13 @@ async def _get_or_create_thread(
         )
     ).scalar_one_or_none()
     if existing is not None:
+        # If the current user previously left this thread, sending a new
+        # message brings it back. Reset their leave flag so the row
+        # reappears in /chat/threads.
+        if current_user_id == existing.user_a_id and existing.user_a_left:
+            existing.user_a_left = False
+        elif current_user_id == existing.user_b_id and existing.user_b_left:
+            existing.user_b_left = False
         return existing
 
     thread = ChatThread(user_a_id=small, user_b_id=large)
@@ -85,22 +92,50 @@ def _peer_id_of(thread: ChatThread, current_user_id: int) -> int:
     return thread.user_b_id if thread.user_a_id == current_user_id else thread.user_a_id
 
 
+def _my_left_flag(thread: ChatThread, current_user_id: int) -> bool:
+    return (
+        thread.user_a_left
+        if thread.user_a_id == current_user_id
+        else thread.user_b_left
+    )
+
+
+def _my_last_read_id(thread: ChatThread, current_user_id: int) -> int:
+    return (
+        thread.user_a_last_read_id
+        if thread.user_a_id == current_user_id
+        else thread.user_b_last_read_id
+    )
+
+
 @router.get("/threads", response_model=list[ChatThreadSummary])
 async def list_threads(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """List my chat threads, newest first. Each row carries the peer's
-    public-safe profile and the last message (if any)."""
+    public-safe profile, the last message (if any), and the unread count.
+
+    Threads where the current user has flagged left=True are excluded;
+    the OTHER user keeps seeing the thread until they leave too.
+    """
+    # SQL-level filter for the user's leave flag — saves us from
+    # post-filtering and from joining when the user has many threads.
+    left_filter = or_(
+        and_(
+            ChatThread.user_a_id == current_user.id,
+            ChatThread.user_a_left.is_(False),
+        ),
+        and_(
+            ChatThread.user_b_id == current_user.id,
+            ChatThread.user_b_left.is_(False),
+        ),
+    )
+
     rows = (
         await db.execute(
             select(ChatThread)
-            .where(
-                or_(
-                    ChatThread.user_a_id == current_user.id,
-                    ChatThread.user_b_id == current_user.id,
-                )
-            )
+            .where(left_filter)
             .order_by(desc(ChatThread.updated_at))
         )
     ).scalars().all()
@@ -118,6 +153,19 @@ async def list_threads(
             )
         ).scalar_one_or_none()
 
+        last_read = _my_last_read_id(thread, current_user.id)
+        unread_count = (
+            await db.execute(
+                select(func.count(Message.id)).where(
+                    and_(
+                        Message.thread_id == thread.id,
+                        Message.id > last_read,
+                        Message.sender_id != current_user.id,
+                    )
+                )
+            )
+        ).scalar_one() or 0
+
         summaries.append(
             ChatThreadSummary(
                 thread_id=thread.id,
@@ -130,9 +178,106 @@ async def list_threads(
                 if last_msg
                 else None,
                 updated_at=thread.updated_at,
+                unread_count=int(unread_count),
             )
         )
     return summaries
+
+
+@router.post(
+    "/with/{peer_id}/read",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def mark_thread_read(
+    peer_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark all messages in this thread as read by the current user.
+
+    Called by the chat room on mount and whenever a poll yields new
+    messages — sets `*_last_read_id` to the latest Message.id so the
+    unread badge in /chat/threads drops to 0.
+    """
+    if peer_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="자기 자신과는 채팅할 수 없습니다.",
+        )
+
+    small, large = _canonical_pair(current_user.id, peer_id)
+    thread = (
+        await db.execute(
+            select(ChatThread).where(
+                and_(
+                    ChatThread.user_a_id == small,
+                    ChatThread.user_b_id == large,
+                )
+            )
+        )
+    ).scalar_one_or_none()
+    if thread is None:
+        # Nothing to mark — the thread will be created on first message send.
+        return None
+
+    latest_id = (
+        await db.execute(
+            select(func.max(Message.id)).where(Message.thread_id == thread.id)
+        )
+    ).scalar_one() or 0
+
+    if thread.user_a_id == current_user.id:
+        if latest_id > thread.user_a_last_read_id:
+            thread.user_a_last_read_id = int(latest_id)
+    else:
+        if latest_id > thread.user_b_last_read_id:
+            thread.user_b_last_read_id = int(latest_id)
+    await db.commit()
+    return None
+
+
+@router.delete(
+    "/threads/{thread_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def leave_thread(
+    thread_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Leave a chat thread (KakaoTalk-style 1:1 leave).
+
+    Sets the current user's `*_left` flag — the row disappears from
+    their /chat/threads list. The OTHER user keeps the conversation.
+    If the OTHER user had already left, the thread + its messages are
+    hard-deleted since nobody's listening anymore.
+    """
+    thread = await db.get(ChatThread, thread_id)
+    if thread is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"thread_id={thread_id} 를 찾을 수 없습니다.",
+        )
+    if current_user.id not in (thread.user_a_id, thread.user_b_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="이 채팅방의 참여자가 아닙니다.",
+        )
+
+    if current_user.id == thread.user_a_id:
+        thread.user_a_left = True
+        peer_left = bool(thread.user_b_left)
+    else:
+        thread.user_b_left = True
+        peer_left = bool(thread.user_a_left)
+
+    if peer_left:
+        # Both sides have left — orphan thread, hard-delete it + messages.
+        await db.execute(delete(Message).where(Message.thread_id == thread.id))
+        await db.delete(thread)
+
+    await db.commit()
+    return None
 
 
 @router.get("/with/{peer_id}/messages", response_model=list[MessageOut])

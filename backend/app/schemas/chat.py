@@ -41,3 +41,6 @@ class ChatThreadSummary(BaseModel):
     peer: ChatPeer
     last_message: Optional[MessageOut] = None
     updated_at: datetime
+    # Number of messages in this thread the current user hasn't seen yet.
+    # 0 means everything is read. Used to render the unread badge.
+    unread_count: int = 0
