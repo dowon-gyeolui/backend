@@ -37,6 +37,9 @@ _DEV_COLUMNS: list[tuple[str, str, str]] = [
     ("users", "religion", "VARCHAR(20)"),
     # 출생지 — 사주 시각 보정용
     ("users", "birth_place", "VARCHAR(50)"),
+    # 채팅 미디어 첨부
+    ("messages", "media_url", "VARCHAR(512)"),
+    ("messages", "media_type", "VARCHAR(16)"),
 ]
 
 

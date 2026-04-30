@@ -16,6 +16,7 @@ from typing import Final
 # so configuration is implicit once the env is set on Render / .env.
 
 _FOLDER: Final[str] = "zami/profile"
+_CHAT_FOLDER: Final[str] = "zami/chat"
 
 
 class StorageNotConfiguredError(RuntimeError):
@@ -74,6 +75,56 @@ def upload_image(file_bytes: bytes, *, public_id: str | None = None) -> str:
         upload_kwargs["public_id"] = public_id
 
     result = cloudinary.uploader.upload(file_bytes, **upload_kwargs)
+    secure_url = result.get("secure_url")
+    if not isinstance(secure_url, str):
+        raise RuntimeError("Cloudinary did not return a secure_url")
+    return secure_url
+
+
+def _config_cloudinary() -> None:
+    _ensure_configured()
+    import cloudinary
+
+    if not os.environ.get("CLOUDINARY_URL"):
+        cloudinary.config(
+            cloud_name=os.environ["CLOUDINARY_CLOUD_NAME"],
+            api_key=os.environ["CLOUDINARY_API_KEY"],
+            api_secret=os.environ["CLOUDINARY_API_SECRET"],
+            secure=True,
+        )
+
+
+def upload_chat_image(file_bytes: bytes, *, sender_id: int) -> str:
+    """채팅용 이미지 업로드 — zami/chat 폴더에 저장. 발신자별 prefix."""
+    _config_cloudinary()
+    import cloudinary.uploader
+
+    result = cloudinary.uploader.upload(
+        file_bytes,
+        folder=f"{_CHAT_FOLDER}/img/{sender_id}",
+        resource_type="image",
+        transformation=[
+            {"width": 1280, "height": 1280, "crop": "limit", "quality": "auto"},
+        ],
+    )
+    secure_url = result.get("secure_url")
+    if not isinstance(secure_url, str):
+        raise RuntimeError("Cloudinary did not return a secure_url")
+    return secure_url
+
+
+def upload_chat_audio(file_bytes: bytes, *, sender_id: int) -> str:
+    """채팅용 음성 메시지 업로드. Cloudinary 는 audio 도 'video' resource 로 처리."""
+    _config_cloudinary()
+    import cloudinary.uploader
+
+    result = cloudinary.uploader.upload(
+        file_bytes,
+        folder=f"{_CHAT_FOLDER}/audio/{sender_id}",
+        # Cloudinary 의 audio 는 resource_type='video' 로 업로드. 'auto'로 두면
+        # webm/mp3/m4a 등 오디오 컨테이너를 알아서 video resource 로 분류.
+        resource_type="video",
+    )
     secure_url = result.get("secure_url")
     if not isinstance(secure_url, str):
         raise RuntimeError("Cloudinary did not return a secure_url")

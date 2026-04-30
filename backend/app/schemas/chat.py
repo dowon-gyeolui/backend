@@ -15,6 +15,8 @@ class MessageOut(BaseModel):
     thread_id: int
     sender_id: int
     content: str
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None  # "image" | "audio"
     created_at: datetime
 
     model_config = {"from_attributes": True}

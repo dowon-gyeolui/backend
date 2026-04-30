@@ -10,9 +10,17 @@ returns only messages with id > after_id, so the client can append new
 ones cheaply every couple of seconds.
 """
 
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy import and_, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +33,11 @@ from app.schemas.chat import (
     ChatThreadSummary,
     MessageCreate,
     MessageOut,
+)
+from app.services.storage import (
+    StorageNotConfiguredError,
+    upload_chat_audio,
+    upload_chat_image,
 )
 
 router = APIRouter()
@@ -194,6 +207,88 @@ async def send_message_to_peer(
     )
     db.add(msg)
     # Bump the thread's updated_at so it floats to the top of the thread list.
+    thread.updated_at = msg.created_at or thread.updated_at
+    await db.commit()
+    await db.refresh(msg)
+    return MessageOut.model_validate(msg)
+
+
+_MAX_MEDIA_BYTES = 12 * 1024 * 1024  # 12 MB
+
+_ALLOWED_IMAGE_TYPES = {
+    "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/gif",
+}
+_ALLOWED_AUDIO_TYPES = {
+    "audio/webm", "audio/mp4", "audio/mpeg", "audio/wav",
+    "audio/x-m4a", "audio/m4a", "audio/aac", "audio/ogg",
+}
+
+
+@router.post(
+    "/with/{peer_id}/messages/media",
+    response_model=MessageOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def send_media_message(
+    peer_id: int,
+    media_type: Literal["image", "audio"] = Form(...),
+    file: UploadFile = File(...),
+    caption: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """이미지/오디오 첨부 메시지. 채팅의 + 버튼 메뉴(사진/카메라/음성)가 호출."""
+    target = await db.get(User, peer_id)
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"user_id={peer_id} not found",
+        )
+
+    if media_type == "image":
+        if file.content_type not in _ALLOWED_IMAGE_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"이미지 형식만 업로드 가능합니다 (받은: {file.content_type}).",
+            )
+    elif media_type == "audio":
+        if file.content_type not in _ALLOWED_AUDIO_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"오디오 형식만 업로드 가능합니다 (받은: {file.content_type}).",
+            )
+
+    raw = await file.read()
+    if len(raw) > _MAX_MEDIA_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"파일이 너무 큽니다. {_MAX_MEDIA_BYTES // (1024 * 1024)}MB 이하로 보내주세요.",
+        )
+
+    try:
+        if media_type == "image":
+            url = upload_chat_image(raw, sender_id=current_user.id)
+        else:
+            url = upload_chat_audio(raw, sender_id=current_user.id)
+    except StorageNotConfiguredError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e),
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"미디어 업로드 실패: {e}",
+        ) from e
+
+    thread = await _get_or_create_thread(current_user.id, peer_id, db)
+    msg = Message(
+        thread_id=thread.id,
+        sender_id=current_user.id,
+        content=(caption or "").strip(),
+        media_url=url,
+        media_type=media_type,
+    )
+    db.add(msg)
     thread.updated_at = msg.created_at or thread.updated_at
     await db.commit()
     await db.refresh(msg)

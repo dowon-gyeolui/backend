@@ -54,7 +54,12 @@ class Message(Base):
         Integer, ForeignKey("chat_threads.id"), nullable=False, index=True
     )
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    content = Column(Text, nullable=False)
+    # 텍스트 메시지의 본문. 미디어 메시지는 빈 문자열도 허용 (혹은 캡션).
+    content = Column(Text, nullable=False, default="")
+    # 미디어 첨부 — Cloudinary URL. NULL 이면 순수 텍스트 메시지.
+    media_url = Column(String(512), nullable=True)
+    # "image" | "audio" — UI 가 렌더링 방식을 분기하기 위해.
+    media_type = Column(String(16), nullable=True)
     created_at = Column(
         DateTime(timezone=True), default=_utcnow, nullable=False, index=True
     )
