@@ -13,6 +13,22 @@ class CompatibilityScore(BaseModel):
     summary: Optional[str] = None
 
 
+class DestinyAnalysis(BaseModel):
+    """운명의 실타래 — 두 사람 사주의 심층 비교 (5 섹션)."""
+
+    user_a_id: int
+    user_b_id: int
+    nickname_a: Optional[str] = None
+    nickname_b: Optional[str] = None
+    score: int
+    intro: str = ""
+    personality: str = ""
+    love_style: str = ""
+    caution: str = ""
+    longterm: str = ""
+    interpretation_status: str = "pending"  # "pending" | "ready"
+
+
 class DateSpot(BaseModel):
     title: str
     description: str

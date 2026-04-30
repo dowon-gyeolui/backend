@@ -293,6 +293,88 @@ def generate_detailed_interpretation(
         return None
 
 
+# --- 운명의 실타래 (커플 사주 심층 비교) ------------------------------
+
+_DESTINY_SYSTEM_PROMPT = (
+    "당신은 두 사용자의 사주 정보를 직접 비교해 깊이 있는 궁합 분석을 "
+    "한국어로 작성하는 도우미입니다.\n"
+    "\n"
+    "반드시 지킬 규칙:\n"
+    + _PLAIN_KOREAN_RULES +
+    "- 두 사람의 일주(日柱)·주요 오행을 직접 인용하면서 비교하십시오. "
+    "예: 'A님은 갑목(甲木) 일간으로 ..., B님은 신금(辛金) 일간으로 ...'.\n"
+    "- 사주 용어를 쓰면 즉시 풀이를 함께 적으십시오.\n"
+    "- 건강·수명·파탄 등 단정적 예언은 금지. '~경향이 있어요', '~잘 맞을 "
+    "것 같아요' 같은 부드러운 표현 사용.\n"
+    "- 각 섹션은 한국어 2~3 문장 (80~160자) 으로 작성.\n"
+    "\n"
+    "반드시 아래 JSON 스키마만 출력하십시오. 다른 설명·도입부·마크다운 금지:\n"
+    "{\n"
+    '  "intro":       "두 분 사주의 첫인상과 전체 인상 요약",\n'
+    '  "personality": "두 분 일주를 직접 비교한 성격 궁합",\n'
+    '  "love_style":  "연애 스타일·표현 방식 비교",\n'
+    '  "caution":     "갈등 가능성과 극복 방향",\n'
+    '  "longterm":    "장기 전망과 관계 발전 방향"\n'
+    "}\n"
+)
+
+
+def _build_destiny_message(
+    *,
+    score: int,
+    user_a_info: dict,
+    user_b_info: dict,
+) -> str:
+    return "\n".join([
+        "[궁합 분석 입력]",
+        f"- 궁합 점수: {score} / 100",
+        f"- 사용자 A: 일주 {user_a_info.get('day_pillar')}"
+        f" · 천간 오행 {user_a_info.get('day_stem_element') or '미상'}"
+        f" · 주요 오행 {user_a_info.get('dominant_element') or '미상'}"
+        f" · 성별 {user_a_info.get('gender') or '미상'}"
+        f" · MBTI {user_a_info.get('mbti') or '미상'}",
+        f"- 사용자 B: 일주 {user_b_info.get('day_pillar')}"
+        f" · 천간 오행 {user_b_info.get('day_stem_element') or '미상'}"
+        f" · 주요 오행 {user_b_info.get('dominant_element') or '미상'}"
+        f" · 성별 {user_b_info.get('gender') or '미상'}"
+        f" · MBTI {user_b_info.get('mbti') or '미상'}",
+        "",
+        "위 두 분의 사주를 직접 비교해 5개 섹션의 깊이 있는 궁합 풀이를 JSON 으로 작성하십시오.",
+    ])
+
+
+def generate_destiny_analysis(
+    *,
+    score: int,
+    user_a_info: dict,
+    user_b_info: dict,
+    model: str = _MODEL,
+) -> Optional[dict[str, str]]:
+    """두 사람의 사주를 직접 비교한 5-섹션 심층 풀이 (운명의 실타래)."""
+    try:
+        resp = _client().responses.create(
+            model=model,
+            instructions=_DESTINY_SYSTEM_PROMPT,
+            input=_build_destiny_message(
+                score=score, user_a_info=user_a_info, user_b_info=user_b_info,
+            ),
+            max_output_tokens=1500,
+        )
+        text = _extract_output_text(resp)
+        parsed = _parse_pair_json(text)
+        if parsed is None:
+            return None
+        return {
+            "intro": str(parsed.get("intro") or "").strip(),
+            "personality": str(parsed.get("personality") or "").strip(),
+            "love_style": str(parsed.get("love_style") or "").strip(),
+            "caution": str(parsed.get("caution") or "").strip(),
+            "longterm": str(parsed.get("longterm") or "").strip(),
+        }
+    except Exception:
+        return None
+
+
 # --- 데이트 장소 추천 ------------------------------------------------
 
 _DATE_RECOMMENDATION_SYSTEM_PROMPT = (

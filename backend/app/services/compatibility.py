@@ -29,6 +29,7 @@ from app.schemas.compatibility import (
     CompatibilityScore,
     DateRecommendation,
     DateSpot,
+    DestinyAnalysis,
     MatchCandidate,
 )
 from app.services.saju import (
@@ -472,5 +473,59 @@ def build_date_recommendation(user_a: User, user_b: User) -> DateRecommendation:
         for s in sections.get("spots", [])
     ]
     if out.overview or out.spots:
+        out.interpretation_status = "ready"
+    return out
+
+
+
+def build_destiny_analysis(user_a: User, user_b: User) -> DestinyAnalysis:
+    """운명의 실타래 — 두 사람 사주를 직접 비교한 5 섹션 풀이."""
+    from app.services.llm.interpret import generate_destiny_analysis
+
+    saju_a = calculate_saju(user_a)
+    saju_b = calculate_saju(user_b)
+    a_dom = _dominant_element(saju_a.element_profile)
+    b_dom = _dominant_element(saju_b.element_profile)
+    score_obj = calculate(user_a, user_b)
+
+    a_day = saju_a.pillars[2]
+    b_day = saju_b.pillars[2]
+    a_stem_el = _STEM_ELEMENT.get(a_day.stem)
+    b_stem_el = _STEM_ELEMENT.get(b_day.stem)
+
+    sections = generate_destiny_analysis(
+        score=score_obj.score,
+        user_a_info={
+            "day_pillar": a_day.combined,
+            "day_stem_element": _ELEMENT_KO.get(a_stem_el or ""),
+            "dominant_element": _ELEMENT_KO.get(a_dom or ""),
+            "gender": user_a.gender,
+            "mbti": user_a.mbti,
+        },
+        user_b_info={
+            "day_pillar": b_day.combined,
+            "day_stem_element": _ELEMENT_KO.get(b_stem_el or ""),
+            "dominant_element": _ELEMENT_KO.get(b_dom or ""),
+            "gender": user_b.gender,
+            "mbti": user_b.mbti,
+        },
+    )
+
+    out = DestinyAnalysis(
+        user_a_id=user_a.id,
+        user_b_id=user_b.id,
+        nickname_a=user_a.nickname,
+        nickname_b=user_b.nickname,
+        score=score_obj.score,
+    )
+    if sections is None:
+        return out
+
+    out.intro = sections.get("intro", "")
+    out.personality = sections.get("personality", "")
+    out.love_style = sections.get("love_style", "")
+    out.caution = sections.get("caution", "")
+    out.longterm = sections.get("longterm", "")
+    if any([out.intro, out.personality, out.love_style, out.caution, out.longterm]):
         out.interpretation_status = "ready"
     return out

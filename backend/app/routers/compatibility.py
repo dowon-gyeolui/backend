@@ -8,6 +8,7 @@ from app.schemas.compatibility import (
     CompatibilityReport,
     CompatibilityScore,
     DateRecommendation,
+    DestinyAnalysis,
     MatchCandidate,
 )
 from app.services import compatibility as compatibility_service
@@ -75,6 +76,35 @@ async def get_compatibility_report(
     _require_birth_data(target, is_self=False)
 
     return compatibility_service.build_report(current_user, target)
+
+
+@router.get("/destiny/{peer_id}", response_model=DestinyAnalysis)
+async def get_destiny_analysis(
+    peer_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """운명의 실타래 — 두 사람의 사주를 직접 비교한 5 섹션 심층 풀이.
+
+    LLM 이 두 분 일주·천간 오행·주요 오행·MBTI 를 받아 첫인상 / 성격 /
+    연애 스타일 / 갈등 포인트 / 장기 전망을 작성한다.
+    """
+    if peer_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="자기 자신과의 분석은 만들지 않습니다.",
+        )
+    _require_birth_data(current_user, is_self=True)
+
+    target = await db.get(User, peer_id)
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"user_id={peer_id} 를 찾을 수 없습니다.",
+        )
+    _require_birth_data(target, is_self=False)
+
+    return compatibility_service.build_destiny_analysis(current_user, target)
 
 
 @router.get("/date-recommendation/{peer_id}", response_model=DateRecommendation)
