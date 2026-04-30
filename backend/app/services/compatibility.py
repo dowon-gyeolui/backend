@@ -27,6 +27,8 @@ from app.models.user import User
 from app.schemas.compatibility import (
     CompatibilityReport,
     CompatibilityScore,
+    DateRecommendation,
+    DateSpot,
     MatchCandidate,
 )
 from app.services.saju import (
@@ -418,3 +420,57 @@ async def find_matches(
             card.mbti = candidate.mbti
         results.append(card)
     return results
+
+
+# --- Date recommendation ----------------------------------------------
+
+def build_date_recommendation(user_a: User, user_b: User) -> DateRecommendation:
+    """Build a DateRecommendation for a paid pair.
+
+    Pulls saju metrics for both users, calls the LLM with their dominant
+    elements + day pillars + MBTI, and returns the structured spots.
+    On LLM failure returns the same shape with status='pending' so the
+    UI can render a friendly fallback.
+    """
+    from app.services.llm.interpret import generate_date_recommendation
+
+    saju_a = calculate_saju(user_a)
+    saju_b = calculate_saju(user_b)
+    a_dom = _dominant_element(saju_a.element_profile)
+    b_dom = _dominant_element(saju_b.element_profile)
+    score_obj = calculate(user_a, user_b)
+
+    sections = generate_date_recommendation(
+        score=score_obj.score,
+        user_a_info={
+            "day_pillar": saju_a.pillars[2].combined,
+            "dominant_element": _ELEMENT_KO.get(a_dom or ""),
+            "gender": user_a.gender,
+            "mbti": user_a.mbti,
+        },
+        user_b_info={
+            "day_pillar": saju_b.pillars[2].combined,
+            "dominant_element": _ELEMENT_KO.get(b_dom or ""),
+            "gender": user_b.gender,
+            "mbti": user_b.mbti,
+        },
+    )
+
+    out = DateRecommendation(
+        user_a_id=user_a.id,
+        user_b_id=user_b.id,
+        nickname_a=user_a.nickname,
+        nickname_b=user_b.nickname,
+        score=score_obj.score,
+    )
+    if sections is None:
+        return out
+
+    out.overview = sections.get("overview", "")
+    out.spots = [
+        DateSpot(title=s["title"], description=s["description"])
+        for s in sections.get("spots", [])
+    ]
+    if out.overview or out.spots:
+        out.interpretation_status = "ready"
+    return out

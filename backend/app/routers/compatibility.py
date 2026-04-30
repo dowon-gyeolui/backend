@@ -7,6 +7,7 @@ from app.models.user import User
 from app.schemas.compatibility import (
     CompatibilityReport,
     CompatibilityScore,
+    DateRecommendation,
     MatchCandidate,
 )
 from app.services import compatibility as compatibility_service
@@ -74,6 +75,35 @@ async def get_compatibility_report(
     _require_birth_data(target, is_self=False)
 
     return compatibility_service.build_report(current_user, target)
+
+
+@router.get("/date-recommendation/{peer_id}", response_model=DateRecommendation)
+async def get_date_recommendation(
+    peer_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """두 분만을 위한 데이트 장소 추천 — 프리미엄 페이지에서 호출.
+
+    LLM 으로 두 분의 사주 정보(주요 오행·일주·MBTI)를 바탕으로 4~5개 장소
+    카테고리를 추천. LLM 실패 시 status='pending' 으로 fallback.
+    """
+    if peer_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="자기 자신과의 추천은 만들지 않습니다.",
+        )
+    _require_birth_data(current_user, is_self=True)
+
+    target = await db.get(User, peer_id)
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"user_id={peer_id} 를 찾을 수 없습니다.",
+        )
+    _require_birth_data(target, is_self=False)
+
+    return compatibility_service.build_date_recommendation(current_user, target)
 
 
 @router.get("/matches", response_model=list[MatchCandidate])

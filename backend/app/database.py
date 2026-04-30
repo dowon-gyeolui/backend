@@ -35,6 +35,8 @@ _DEV_COLUMNS: list[tuple[str, str, str]] = [
     ("users", "smoking", "VARCHAR(20)"),
     ("users", "drinking", "VARCHAR(20)"),
     ("users", "religion", "VARCHAR(20)"),
+    # 출생지 — 사주 시각 보정용
+    ("users", "birth_place", "VARCHAR(50)"),
 ]
 
 

@@ -13,6 +13,24 @@ class CompatibilityScore(BaseModel):
     summary: Optional[str] = None
 
 
+class DateSpot(BaseModel):
+    title: str
+    description: str
+
+
+class DateRecommendation(BaseModel):
+    """LLM-generated date spot suggestions for a paid pair."""
+
+    user_a_id: int
+    user_b_id: int
+    nickname_a: Optional[str] = None
+    nickname_b: Optional[str] = None
+    score: int
+    overview: str = ""
+    spots: list[DateSpot] = []
+    interpretation_status: str = "pending"  # "pending" | "ready"
+
+
 class CompatibilityReport(BaseModel):
     """Drawer-style 운명 분석 리포트 for the chat header.
 

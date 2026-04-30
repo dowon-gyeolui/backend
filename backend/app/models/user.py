@@ -22,6 +22,9 @@ class User(Base):
     calendar_type = Column(String(10), nullable=True)  # "solar" | "lunar"
     is_leap_month = Column(Boolean, default=False, nullable=False)
     gender = Column(String(10), nullable=True)          # "male" | "female"
+    # 출생지 — KST(135°E) 와 실제 경도 차이로 인한 시각 보정에 사용.
+    # "서울특별시" 등 한국 17개 시·도 + "해외/기타" 가 들어올 수 있다.
+    birth_place = Column(String(50), nullable=True)
 
     # --- Profile card fields (shown in match cards) ---
     nickname = Column(String(50), nullable=True)

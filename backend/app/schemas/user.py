@@ -30,6 +30,7 @@ class BirthDataCreate(BaseModel):
     calendar_type: Literal["solar", "lunar"] = "solar"
     is_leap_month: bool = False
     gender: Literal["male", "female"]
+    birth_place: Optional[str] = Field(default=None, max_length=50)
 
     @field_validator("birth_time")
     @classmethod
@@ -45,6 +46,7 @@ class BirthDataUpdate(BaseModel):
     calendar_type: Optional[Literal["solar", "lunar"]] = None
     is_leap_month: Optional[bool] = None
     gender: Optional[Literal["male", "female"]] = None
+    birth_place: Optional[str] = Field(default=None, max_length=50)
 
     @field_validator("birth_time")
     @classmethod
@@ -102,6 +104,7 @@ class UserProfileResponse(BaseModel):
     calendar_type: Optional[str] = None
     is_leap_month: bool
     gender: Optional[str] = None
+    birth_place: Optional[str] = None
     nickname: Optional[str] = None
     photo_url: Optional[str] = None
 

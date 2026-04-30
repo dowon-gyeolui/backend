@@ -293,6 +293,96 @@ def generate_detailed_interpretation(
         return None
 
 
+# --- 데이트 장소 추천 ------------------------------------------------
+
+_DATE_RECOMMENDATION_SYSTEM_PROMPT = (
+    "당신은 두 사용자의 사주 궁합을 바탕으로 어울리는 데이트 장소를 "
+    "한국어로 제안하는 도우미입니다.\n"
+    "\n"
+    "반드시 지킬 규칙:\n"
+    + _PLAIN_KOREAN_RULES +
+    "- '~할 것이다' 대신 '~경향이 있어요', '~잘 맞을 것 같아요' 같은 부드러운 "
+    "추천 표현을 사용하십시오.\n"
+    "- 사주 전문 용어를 쓰면 즉시 풀이를 같이 적으십시오.\n"
+    "- 데이트 장소는 한국 도시(서울/부산 등) 어디서나 갈 만한 일반 카테고리로 "
+    "제안 (특정 가게 이름 X). 예: '한적한 산책로', '조용한 북카페', "
+    "'활기찬 시장', '미술 전시회', '야경이 보이는 루프탑'.\n"
+    "- 4~5개 장소 제안. 각 장소는 title (12자 이내) + description (40~80자) "
+    "으로 작성.\n"
+    "\n"
+    "반드시 아래 JSON 스키마만 출력하십시오. 다른 설명·도입부·마크다운 금지:\n"
+    "{\n"
+    '  "overview": "두 분의 데이트 스타일을 한 문단(60~120자)으로 요약",\n'
+    '  "spots": [\n'
+    '    {"title": "조용한 북카페",  "description": "이런 이유로 잘 맞아요..."},\n'
+    '    {"title": "한적한 산책로",  "description": "..."},\n'
+    '    {"title": "활기찬 시장",    "description": "..."},\n'
+    '    {"title": "야경 루프탑",    "description": "..."}\n'
+    "  ]\n"
+    "}\n"
+)
+
+
+def _build_date_message(
+    *,
+    score: int,
+    user_a_info: dict,
+    user_b_info: dict,
+) -> str:
+    return "\n".join([
+        "[궁합 분석 입력]",
+        f"- 궁합 점수: {score} / 100",
+        f"- 사용자 A: 일주 {user_a_info.get('day_pillar')}"
+        f" · 주요 오행 {user_a_info.get('dominant_element') or '미상'}"
+        f" · 성별 {user_a_info.get('gender') or '미상'}"
+        f" · MBTI {user_a_info.get('mbti') or '미상'}",
+        f"- 사용자 B: 일주 {user_b_info.get('day_pillar')}"
+        f" · 주요 오행 {user_b_info.get('dominant_element') or '미상'}"
+        f" · 성별 {user_b_info.get('gender') or '미상'}"
+        f" · MBTI {user_b_info.get('mbti') or '미상'}",
+        "",
+        "위 정보를 바탕으로 두 분에게 잘 맞는 데이트 장소 4~5곳을 JSON 으로 추천하십시오.",
+    ])
+
+
+def generate_date_recommendation(
+    *,
+    score: int,
+    user_a_info: dict,
+    user_b_info: dict,
+    model: str = _MODEL,
+) -> Optional[dict[str, Any]]:
+    """두 사람의 사주 정보로 데이트 장소 추천 (overview + 4~5개 spots)."""
+    try:
+        resp = _client().responses.create(
+            model=model,
+            instructions=_DATE_RECOMMENDATION_SYSTEM_PROMPT,
+            input=_build_date_message(
+                score=score, user_a_info=user_a_info, user_b_info=user_b_info,
+            ),
+            max_output_tokens=1200,
+        )
+        text = _extract_output_text(resp)
+        parsed = _parse_pair_json(text)
+        if parsed is None:
+            return None
+        raw_spots = parsed.get("spots") or []
+        spots: list[dict[str, str]] = []
+        for s in raw_spots:
+            if not isinstance(s, dict):
+                continue
+            t = str(s.get("title") or "").strip()
+            d = str(s.get("description") or "").strip()
+            if t and d:
+                spots.append({"title": t, "description": d})
+        return {
+            "overview": str(parsed.get("overview") or "").strip(),
+            "spots": spots,
+        }
+    except Exception:
+        return None
+
+
 # --- 자미두수 interpretation -----------------------------------------
 
 _JAMIDUSU_SYSTEM_PROMPT = (

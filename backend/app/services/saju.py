@@ -152,6 +152,7 @@ def calculate(user: User) -> SajuResponse:
         user.birth_time,
         calendar_type=calendar,  # type: ignore[arg-type]
         is_leap_month=user.is_leap_month,
+        birth_place=user.birth_place,
     )
 
     def to_pillar(label: str, p: tuple[str, str] | None) -> Pillar:

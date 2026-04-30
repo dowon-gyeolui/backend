@@ -159,8 +159,60 @@ def _day_pillar(d: date) -> tuple[str, str]:
     return stem, branch
 
 
+# 출생지별 KST 보정값(분). 한국 표준시(KST 135°E)와 실제 경도 차이 보정.
+# 양수면 더하고, 음수면 빼서 실제 태양시(local apparent time) 에 가깝게 만든다.
+# 일반적으로 한국은 KST 가 약 30분 빠르게 가기 때문에 -32 분 정도가 표준.
+_BIRTH_PLACE_OFFSET_MIN: dict[str, int] = {
+    "서울특별시":   -32,
+    "인천광역시":   -33,
+    "경기도":       -32,
+    "강원도":       -29,
+    "강원특별자치도": -29,
+    "충청북도":     -31,
+    "충청남도":     -32,
+    "대전광역시":   -32,
+    "세종특별자치시": -32,
+    "전라북도":     -33,
+    "전북특별자치도": -33,
+    "전라남도":     -33,
+    "광주광역시":   -33,
+    "경상북도":     -29,
+    "대구광역시":   -29,
+    "경상남도":     -27,
+    "부산광역시":   -27,
+    "울산광역시":   -27,
+    "제주특별자치도": -34,
+    # 한국 외 — 보정하지 않음
+    "해외/기타":    0,
+}
+
+
+def _adjust_birth_time(birth_time: str, birth_place: Optional[str]) -> str:
+    """birth_place 에 따라 birth_time 을 분 단위로 보정한 새 'HH:MM' 반환."""
+    offset = _BIRTH_PLACE_OFFSET_MIN.get(
+        birth_place or "",
+        # 미입력/매칭 안 되는 한국 지역은 서울 표준값으로 폴백
+        -32 if not birth_place else 0,
+    )
+    if offset == 0:
+        return birth_time
+    try:
+        hh, mm = birth_time.split(":")
+        total = int(hh) * 60 + int(mm) + offset
+        # 24h wrap (음수도 처리). 사주 시진 계산에서 23~01 자시 경계가 있으므로
+        # 음수가 되면 전날로 wrap 되도록 modulo.
+        total %= 24 * 60
+        return f"{total // 60:02d}:{total % 60:02d}"
+    except (ValueError, AttributeError):
+        return birth_time
+
+
 def _time_pillar(birth_time: Optional[str], day_stem: str) -> Optional[tuple[str, str]]:
-    """시주(時柱). birth_time이 None이면 None 반환 (시진 미상)."""
+    """시주(時柱). birth_time이 None이면 None 반환 (시진 미상).
+
+    호출자는 이미 birth_place 보정이 적용된 시간을 넘겨야 한다 — 본 함수는
+    단순히 분 → 시진 매핑만 담당.
+    """
     if not birth_time:
         return None
     try:
@@ -257,16 +309,47 @@ def calculate_four_pillars(
     *,
     calendar_type: Literal["solar", "lunar"] = "solar",
     is_leap_month: bool = False,
+    birth_place: Optional[str] = None,
 ) -> FourPillars:
-    """주어진 출생 정보로 정확한 4기둥 계산."""
+    """주어진 출생 정보로 정확한 4기둥 계산.
+
+    birth_place 에 따라 birth_time 을 KST → 지역시(local apparent time)로
+    보정한다. 보정 결과 자정을 넘기면 일주(日柱) 도 하루 이동해야 하므로
+    birth_date 를 같이 조정한다.
+    """
+    # birth_time 보정
+    adjusted_time = birth_time
+    date_offset_days = 0
+    if birth_time:
+        original_total = _parse_minutes(birth_time)
+        if original_total is not None:
+            adjusted_time = _adjust_birth_time(birth_time, birth_place)
+            adjusted_total = _parse_minutes(adjusted_time)
+            if adjusted_total is not None and adjusted_total > original_total + 12 * 60:
+                # 음수 wrap 발생 → 전날
+                date_offset_days = -1
+            elif adjusted_total is not None and adjusted_total + 12 * 60 < original_total:
+                # 양수 wrap 발생 → 다음날
+                date_offset_days = 1
+
     solar = _to_solar(birth_date, calendar_type=calendar_type, is_leap_month=is_leap_month)
+    if date_offset_days:
+        solar = solar + timedelta(days=date_offset_days)
 
     year = _year_pillar(solar)
     month = _month_pillar(solar, year[0])
     day = _day_pillar(solar)
-    time = _time_pillar(birth_time, day[0])
+    time = _time_pillar(adjusted_time, day[0])
 
     return FourPillars(year=year, month=month, day=day, time=time)
+
+
+def _parse_minutes(hhmm: str) -> Optional[int]:
+    try:
+        hh, mm = hhmm.split(":")
+        return int(hh) * 60 + int(mm)
+    except (ValueError, AttributeError):
+        return None
 
 
 def element_distribution_from_pillars(p: FourPillars) -> dict[str, int]:
