@@ -2,6 +2,9 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import ChatThread, Message
+from app.models.daily_match import DailyMatch
+from app.models.photo import UserPhoto
+from app.models.report import Report
 from app.models.user import User
 from app.schemas.user import (
     BirthDataCreate,
@@ -9,6 +12,7 @@ from app.schemas.user import (
     ProfileUpdate,
     PublicProfileResponse,
 )
+from app.services.storage import delete_image
 
 
 async def set_birth_data(user: User, data: BirthDataCreate, db: AsyncSession) -> User:
@@ -105,9 +109,18 @@ def build_public_profile(viewer: User, target: User) -> PublicProfileResponse:
 async def delete_account(user: User, db: AsyncSession) -> None:
     """탈퇴하기 — purge the user's record and any FK-bound rows.
 
-    chat_threads.user_a_id/user_b_id and messages.thread_id/sender_id are
-    foreign keys to users.id with no ON DELETE CASCADE configured, so we
-    delete the dependent rows manually to avoid IntegrityError.
+    Several tables FK back to users.id with no ON DELETE CASCADE configured,
+    so we have to clean up dependent rows manually before deleting the
+    user, otherwise Postgres raises IntegrityError and the request fails
+    with what the browser surfaces as "Failed to fetch":
+
+      - chat_threads.user_a_id / user_b_id  + their messages
+      - messages.sender_id (defensive)
+      - user_photos.user_id
+      - daily_matches.user_id  AND .candidate_id (the user might have
+        been someone else's daily match, those rows must go too or the
+        OTHER user's history page would 500 on hydrate)
+      - reports.reporter_id / reported_id
 
     Re-registration with the same kakao_id is fine — the unique constraint
     is satisfied once this row is gone.
@@ -129,6 +142,42 @@ async def delete_account(user: User, db: AsyncSession) -> None:
     #    (defensive — should be covered above but cheap to belt-and-brace).
     await db.execute(delete(Message).where(Message.sender_id == user.id))
 
-    # 3) Finally, the user.
+    # 3) User photos — also remove from Cloudinary so the assets don't
+    #    linger after the account is gone.
+    photo_rows = (
+        await db.execute(
+            select(UserPhoto).where(UserPhoto.user_id == user.id)
+        )
+    ).scalars().all()
+    for photo in photo_rows:
+        if photo.public_id:
+            delete_image(photo.public_id)
+    if photo_rows:
+        await db.execute(
+            delete(UserPhoto).where(UserPhoto.user_id == user.id)
+        )
+
+    # 4) Daily-match rows: both this user's own pack AND any pack where
+    #    they were assigned to someone else as a candidate.
+    await db.execute(
+        delete(DailyMatch).where(
+            or_(
+                DailyMatch.user_id == user.id,
+                DailyMatch.candidate_id == user.id,
+            )
+        )
+    )
+
+    # 5) Reports they filed or that targeted them.
+    await db.execute(
+        delete(Report).where(
+            or_(
+                Report.reporter_id == user.id,
+                Report.reported_id == user.id,
+            )
+        )
+    )
+
+    # 6) Finally, the user.
     await db.delete(user)
     await db.commit()
