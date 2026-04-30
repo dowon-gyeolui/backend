@@ -65,6 +65,9 @@ def upload_image(file_bytes: bytes, *, public_id: str | None = None) -> str:
         "folder": _FOLDER,
         "resource_type": "image",
         "overwrite": True,
+        # iPhone Safari uploads HEIC by default — force-convert at storage
+        # time so secure_url ends in .jpg, which every browser can render.
+        "format": "jpg",
         # Square thumbnails for match cards. Cloudinary returns extra URLs
         # we don't need; we just keep the secure_url.
         "transformation": [
@@ -103,6 +106,9 @@ def upload_chat_image(file_bytes: bytes, *, sender_id: int) -> str:
         file_bytes,
         folder=f"{_CHAT_FOLDER}/img/{sender_id}",
         resource_type="image",
+        # Same HEIC concern as profile photos — normalize to .jpg so chat
+        # image messages render in any browser.
+        format="jpg",
         transformation=[
             {"width": 1280, "height": 1280, "crop": "limit", "quality": "auto"},
         ],

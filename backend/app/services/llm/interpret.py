@@ -181,15 +181,19 @@ def _build_pair_message(
     user_b_info: dict,
     passages: list[RetrievedPassage],
 ) -> str:
+    nick_a = user_a_info.get("nickname") or "사용자A"
+    nick_b = user_b_info.get("nickname") or "사용자B"
     lines = [
         "[궁합 분석 입력]",
         f"- 궁합 점수: {score} / 100",
-        f"- 사용자 A: 일주 {user_a_info.get('day_pillar')}"
+        f"- {nick_a}: 일주 {user_a_info.get('day_pillar')}"
         f" · 주요 오행 {user_a_info.get('dominant_element') or '미상'}"
         f" · 성별 {user_a_info.get('gender') or '미상'}",
-        f"- 사용자 B: 일주 {user_b_info.get('day_pillar')}"
+        f"- {nick_b}: 일주 {user_b_info.get('day_pillar')}"
         f" · 주요 오행 {user_b_info.get('dominant_element') or '미상'}"
         f" · 성별 {user_b_info.get('gender') or '미상'}",
+        "",
+        f"본문에서 두 사람을 부를 때는 '{nick_a}님', '{nick_b}님' 으로만 호칭하십시오.",
         "",
         "[검색된 원전 구절]",
     ]
@@ -301,8 +305,11 @@ _DESTINY_SYSTEM_PROMPT = (
     "\n"
     "반드시 지킬 규칙:\n"
     + _PLAIN_KOREAN_RULES +
+    "- 두 사람을 가리킬 때는 [궁합 분석 입력]에 적힌 닉네임을 그대로 사용하고 "
+    "뒤에 '님' 을 붙여 호칭하십시오. 예: '민수님', '예린님'. "
+    "절대 'A님', 'B님', '사용자 A', '상대' 등으로 부르지 마십시오.\n"
     "- 두 사람의 일주(日柱)·주요 오행을 직접 인용하면서 비교하십시오. "
-    "예: 'A님은 갑목(甲木) 일간으로 ..., B님은 신금(辛金) 일간으로 ...'.\n"
+    "예: '민수님은 갑목(甲木) 일간으로 ..., 예린님은 신금(辛金) 일간으로 ...'.\n"
     "- 사주 용어를 쓰면 즉시 풀이를 함께 적으십시오.\n"
     "- 건강·수명·파탄 등 단정적 예언은 금지. '~경향이 있어요', '~잘 맞을 "
     "것 같아요' 같은 부드러운 표현 사용.\n"
@@ -325,21 +332,25 @@ def _build_destiny_message(
     user_a_info: dict,
     user_b_info: dict,
 ) -> str:
+    nick_a = user_a_info.get("nickname") or "사용자A"
+    nick_b = user_b_info.get("nickname") or "사용자B"
     return "\n".join([
         "[궁합 분석 입력]",
         f"- 궁합 점수: {score} / 100",
-        f"- 사용자 A: 일주 {user_a_info.get('day_pillar')}"
+        f"- {nick_a}: 일주 {user_a_info.get('day_pillar')}"
         f" · 천간 오행 {user_a_info.get('day_stem_element') or '미상'}"
         f" · 주요 오행 {user_a_info.get('dominant_element') or '미상'}"
         f" · 성별 {user_a_info.get('gender') or '미상'}"
         f" · MBTI {user_a_info.get('mbti') or '미상'}",
-        f"- 사용자 B: 일주 {user_b_info.get('day_pillar')}"
+        f"- {nick_b}: 일주 {user_b_info.get('day_pillar')}"
         f" · 천간 오행 {user_b_info.get('day_stem_element') or '미상'}"
         f" · 주요 오행 {user_b_info.get('dominant_element') or '미상'}"
         f" · 성별 {user_b_info.get('gender') or '미상'}"
         f" · MBTI {user_b_info.get('mbti') or '미상'}",
         "",
-        "위 두 분의 사주를 직접 비교해 5개 섹션의 깊이 있는 궁합 풀이를 JSON 으로 작성하십시오.",
+        f"두 분({nick_a}, {nick_b})의 사주를 직접 비교해 5개 섹션의 깊이 있는 "
+        f"궁합 풀이를 JSON 으로 작성하십시오. 본문에서는 반드시 두 사람을 "
+        f"'{nick_a}님', '{nick_b}님' 으로만 호칭하십시오.",
     ])
 
 
@@ -411,19 +422,23 @@ def _build_date_message(
     user_a_info: dict,
     user_b_info: dict,
 ) -> str:
+    nick_a = user_a_info.get("nickname") or "사용자A"
+    nick_b = user_b_info.get("nickname") or "사용자B"
     return "\n".join([
         "[궁합 분석 입력]",
         f"- 궁합 점수: {score} / 100",
-        f"- 사용자 A: 일주 {user_a_info.get('day_pillar')}"
+        f"- {nick_a}: 일주 {user_a_info.get('day_pillar')}"
         f" · 주요 오행 {user_a_info.get('dominant_element') or '미상'}"
         f" · 성별 {user_a_info.get('gender') or '미상'}"
         f" · MBTI {user_a_info.get('mbti') or '미상'}",
-        f"- 사용자 B: 일주 {user_b_info.get('day_pillar')}"
+        f"- {nick_b}: 일주 {user_b_info.get('day_pillar')}"
         f" · 주요 오행 {user_b_info.get('dominant_element') or '미상'}"
         f" · 성별 {user_b_info.get('gender') or '미상'}"
         f" · MBTI {user_b_info.get('mbti') or '미상'}",
         "",
-        "위 정보를 바탕으로 두 분에게 잘 맞는 데이트 장소 4~5곳을 JSON 으로 추천하십시오.",
+        f"위 정보를 바탕으로 두 분({nick_a}, {nick_b})에게 잘 맞는 데이트 "
+        "장소 4~5곳을 JSON 으로 추천하십시오. description 본문에서 두 사람을 "
+        f"부를 때는 '{nick_a}님', '{nick_b}님' 으로만 호칭하십시오.",
     ])
 
 

@@ -9,6 +9,7 @@ from app.schemas.user import (
     BirthDataCreate,
     BirthDataUpdate,
     ProfileUpdate,
+    PublicProfileResponse,
     UserProfileResponse,
 )
 from app.services import users as users_service
@@ -20,6 +21,27 @@ router = APIRouter()
 @router.get("/me", response_model=UserProfileResponse)
 async def get_my_profile(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.get("/{user_id}/public-profile", response_model=PublicProfileResponse)
+async def get_public_profile(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """매칭 카드 → 상세 정보 페이지의 백엔드.
+
+    카카오 ID·정확한 생년월일 같은 민감 정보는 빼고, 사진은 무료 티어
+    호출자에 한해 가린다(is_blinded=True). 자기 자신 ID 도 허용해서
+    프론트가 같은 컴포넌트를 재활용할 수 있게 한다.
+    """
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"user_id={user_id} 를 찾을 수 없습니다.",
+        )
+    return users_service.build_public_profile(current_user, target)
 
 
 @router.post("/me/birth-data", response_model=UserProfileResponse)

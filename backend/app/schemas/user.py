@@ -124,3 +124,38 @@ class UserProfileResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PublicProfileResponse(BaseModel):
+    """Another user's public profile — for the 매칭 카드 → 상세 정보 page.
+
+    Excludes private fields (kakao_id, exact birth_date/time, is_paid). The
+    photo is blinded for callers who haven't paid; the consumer (frontend)
+    decides how to render the locked state.
+    """
+
+    id: int
+    nickname: Optional[str] = None
+    photo_url: Optional[str] = None  # null when blinded for the caller
+    is_blinded: bool
+
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    bio: Optional[str] = None
+
+    height_cm: Optional[int] = None
+    mbti: Optional[str] = None
+    job: Optional[str] = None
+    region: Optional[str] = None
+    smoking: Optional[str] = None
+    drinking: Optional[str] = None
+    religion: Optional[str] = None
+
+    # Saju summary — same shape used by the match card so callers can
+    # render the same chips on the detail page.
+    dominant_element: Optional[str] = None
+    day_pillar: Optional[str] = None
+
+    # Compatibility score against the caller — convenient so the detail
+    # page doesn't need a separate /compatibility/score round-trip.
+    compatibility_score: Optional[int] = None

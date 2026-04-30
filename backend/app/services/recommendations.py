@@ -183,11 +183,13 @@ async def recommend_pair(
         llm_out = generate_pair_recommendation(
             score=cs.score,
             user_a_info={
+                "nickname": user_a.nickname,
                 "day_pillar": day_a.combined,
                 "dominant_element": _ELEMENT_KO.get(dom_a) if dom_a else None,
                 "gender": user_a.gender,
             },
             user_b_info={
+                "nickname": user_b.nickname,
                 "day_pillar": day_b.combined,
                 "dominant_element": _ELEMENT_KO.get(dom_b) if dom_b else None,
                 "gender": user_b.gender,

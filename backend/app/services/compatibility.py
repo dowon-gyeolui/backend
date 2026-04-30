@@ -444,12 +444,14 @@ def build_date_recommendation(user_a: User, user_b: User) -> DateRecommendation:
     sections = generate_date_recommendation(
         score=score_obj.score,
         user_a_info={
+            "nickname": user_a.nickname,
             "day_pillar": saju_a.pillars[2].combined,
             "dominant_element": _ELEMENT_KO.get(a_dom or ""),
             "gender": user_a.gender,
             "mbti": user_a.mbti,
         },
         user_b_info={
+            "nickname": user_b.nickname,
             "day_pillar": saju_b.pillars[2].combined,
             "dominant_element": _ELEMENT_KO.get(b_dom or ""),
             "gender": user_b.gender,
@@ -496,6 +498,7 @@ def build_destiny_analysis(user_a: User, user_b: User) -> DestinyAnalysis:
     sections = generate_destiny_analysis(
         score=score_obj.score,
         user_a_info={
+            "nickname": user_a.nickname,
             "day_pillar": a_day.combined,
             "day_stem_element": _ELEMENT_KO.get(a_stem_el or ""),
             "dominant_element": _ELEMENT_KO.get(a_dom or ""),
@@ -503,6 +506,7 @@ def build_destiny_analysis(user_a: User, user_b: User) -> DestinyAnalysis:
             "mbti": user_a.mbti,
         },
         user_b_info={
+            "nickname": user_b.nickname,
             "day_pillar": b_day.combined,
             "day_stem_element": _ELEMENT_KO.get(b_stem_el or ""),
             "dominant_element": _ELEMENT_KO.get(b_dom or ""),
