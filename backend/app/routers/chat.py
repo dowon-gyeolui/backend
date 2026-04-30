@@ -184,6 +184,54 @@ async def list_threads(
     return summaries
 
 
+@router.get("/unread-summary")
+async def unread_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Lightweight summary used by the bottom-nav red dot.
+
+    Returns ``{"total_unread": N}`` — the sum of unread messages across
+    every thread the current user is in, excluding threads they've left.
+    Cheaper than /chat/threads (no per-thread peer hydration / last_msg
+    fetch) so AppShell can poll it on a short cadence without slowing
+    down the rest of the app.
+    """
+    threads = (
+        await db.execute(
+            select(ChatThread).where(
+                or_(
+                    and_(
+                        ChatThread.user_a_id == current_user.id,
+                        ChatThread.user_a_left.is_(False),
+                    ),
+                    and_(
+                        ChatThread.user_b_id == current_user.id,
+                        ChatThread.user_b_left.is_(False),
+                    ),
+                )
+            )
+        )
+    ).scalars().all()
+
+    total = 0
+    for thread in threads:
+        last_read = _my_last_read_id(thread, current_user.id)
+        count = (
+            await db.execute(
+                select(func.count(Message.id)).where(
+                    and_(
+                        Message.thread_id == thread.id,
+                        Message.id > last_read,
+                        Message.sender_id != current_user.id,
+                    )
+                )
+            )
+        ).scalar_one() or 0
+        total += int(count)
+    return {"total_unread": total}
+
+
 @router.post(
     "/with/{peer_id}/read",
     status_code=status.HTTP_204_NO_CONTENT,

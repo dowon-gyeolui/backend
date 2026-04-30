@@ -17,19 +17,23 @@ to the `summary` once per-pair RAG cost is acceptable.
 
 from __future__ import annotations
 
-from datetime import date
-from typing import Optional
+from datetime import date, datetime, timedelta, timezone
+from typing import Literal, Optional
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.daily_match import DailyMatch
 from app.models.user import User
 from app.schemas.compatibility import (
     CompatibilityReport,
     CompatibilityScore,
+    DailyMatchPack,
+    DailyMatchSlot,
     DateRecommendation,
     DateSpot,
     DestinyAnalysis,
+    HistoryMatchEntry,
     MatchCandidate,
 )
 from app.services.saju import (
@@ -533,3 +537,322 @@ def build_destiny_analysis(user_a: User, user_b: User) -> DestinyAnalysis:
     if any([out.intro, out.personality, out.love_style, out.caution, out.longterm]):
         out.interpretation_status = "ready"
     return out
+
+
+# --- Daily 4-slot match assignment ----------------------------------------
+#
+# Cycle = 48 hours. A "pack" is the set of 4 DailyMatch rows sharing one
+# `assigned_at`. Slot policy:
+#
+#   slot 0 → 사주 무료. Unlocked at assigned_at.
+#   slot 1 → 자미두수 유료. Unlocked at assigned_at, photo blinded if !paid.
+#   slot 2 → 사주 무료. Unlocked at assigned_at + 24h.
+#   slot 3 → 자미두수 유료. Unlocked at assigned_at + 24h, blinded if !paid.
+#
+# A new pack is generated on the first /compatibility/today call once the
+# previous pack's assigned_at + 48h has passed. Older packs stay in
+# `daily_matches` to feed the cumulative history list.
+
+CYCLE_HOURS = 48
+LOCK_HOURS = 24
+SLOT_COUNT = 4
+SLOT_BASIS: dict[int, Literal["saju", "jamidusu"]] = {
+    0: "saju",
+    1: "jamidusu",
+    2: "saju",
+    3: "jamidusu",
+}
+PAID_SLOTS = {1, 3}
+LOCKED_INITIALLY_SLOTS = {2, 3}
+
+
+def _slot_unlock_at(assigned_at: datetime, slot_index: int) -> datetime:
+    if slot_index in LOCKED_INITIALLY_SLOTS:
+        return assigned_at + timedelta(hours=LOCK_HOURS)
+    return assigned_at
+
+
+def _build_card_for(
+    candidate: User,
+    *,
+    score: int,
+    viewer_is_paid: bool,
+    is_paid_slot: bool,
+) -> MatchCandidate:
+    """Build a MatchCandidate respecting per-slot photo policy.
+
+    Free slots (0,2): always reveal photo + extras.
+    Paid slots (1,3): photo + extras only if the viewer has paid.
+    """
+    is_blinded = is_paid_slot and not viewer_is_paid
+
+    card = MatchCandidate(
+        user_id=candidate.id,
+        score=score,
+        nickname=candidate.nickname,
+        age=_compute_age(candidate.birth_date),
+        gender=candidate.gender,
+        is_blinded=is_blinded,
+        photo_url=candidate.photo_url,
+    )
+    if not is_blinded:
+        try:
+            saju = calculate_saju(candidate)
+            dom = _dominant_element(saju.element_profile)
+            card.birth_year = (
+                candidate.birth_date.year if candidate.birth_date else None
+            )
+            card.dominant_element = _ELEMENT_KO[dom] if dom else None
+            card.mbti = candidate.mbti
+        except Exception:
+            # Saju calc may fail for malformed birth data — keep the card
+            # usable with just the always-visible fields.
+            pass
+    return card
+
+
+async def _latest_pack(
+    user_id: int, db: AsyncSession,
+) -> list[DailyMatch]:
+    """Return the most recent cycle's 4 rows for the user (newest assigned_at).
+
+    Empty list when the user has never been assigned a pack.
+    """
+    latest_assigned_at = (
+        await db.execute(
+            select(DailyMatch.assigned_at)
+            .where(DailyMatch.user_id == user_id)
+            .order_by(desc(DailyMatch.assigned_at))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if latest_assigned_at is None:
+        return []
+
+    rows = (
+        await db.execute(
+            select(DailyMatch)
+            .where(DailyMatch.user_id == user_id)
+            .where(DailyMatch.assigned_at == latest_assigned_at)
+            .order_by(DailyMatch.slot_index)
+        )
+    ).scalars().all()
+    return list(rows)
+
+
+async def _candidate_pool(
+    current_user: User, db: AsyncSession,
+) -> list[User]:
+    """Eligible candidates for assignment — same gender filter as live matches."""
+    stmt = (
+        select(User)
+        .where(User.id != current_user.id)
+        .where(User.birth_date.is_not(None))
+    )
+    if current_user.gender == "male":
+        stmt = stmt.where(User.gender == "female")
+    elif current_user.gender == "female":
+        stmt = stmt.where(User.gender == "male")
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def _create_new_pack(
+    current_user: User, db: AsyncSession,
+) -> list[DailyMatch]:
+    """Pick top-4 compat candidates and persist them as a new cycle.
+
+    Both saju (slot 0,2) and jamidusu (slot 1,3) currently use the same
+    rule-based compat score — the basis label is informational so the UI
+    can call out which engine drove the pick. When a real jamidusu-based
+    score lands later, this is where it'd plug in.
+    """
+    pool = await _candidate_pool(current_user, db)
+    scored = sorted(
+        ((c, calculate(current_user, c).score) for c in pool),
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
+    top = scored[:SLOT_COUNT]
+
+    # Use a single timestamp for all 4 rows so they share a cycle key.
+    now = datetime.now(timezone.utc)
+    rows: list[DailyMatch] = []
+    for slot_index in range(SLOT_COUNT):
+        if slot_index >= len(top):
+            # Not enough candidates yet — skip the slot. Pack will be
+            # short until more users sign up; UI handles empty slots.
+            continue
+        candidate, _score = top[slot_index]
+        rows.append(
+            DailyMatch(
+                user_id=current_user.id,
+                candidate_id=candidate.id,
+                slot_index=slot_index,
+                assigned_at=now,
+            )
+        )
+
+    db.add_all(rows)
+    await db.commit()
+    for r in rows:
+        await db.refresh(r)
+    return rows
+
+
+async def get_or_assign_today_pack(
+    current_user: User, db: AsyncSession,
+) -> DailyMatchPack:
+    """Return the user's current 4-card pack, generating a new cycle if
+    the previous one has expired (>= CYCLE_HOURS old) or never existed.
+    """
+    rows = await _latest_pack(current_user.id, db)
+
+    needs_new = False
+    if not rows:
+        needs_new = True
+    else:
+        age = datetime.now(timezone.utc) - rows[0].assigned_at
+        if age >= timedelta(hours=CYCLE_HOURS):
+            needs_new = True
+
+    if needs_new:
+        rows = await _create_new_pack(current_user, db)
+
+    return await _materialize_pack(current_user, rows, db)
+
+
+async def _materialize_pack(
+    current_user: User, rows: list[DailyMatch], db: AsyncSession,
+) -> DailyMatchPack:
+    """Hydrate stored DailyMatch rows into the response shape."""
+    if not rows:
+        # Pool too small to assign anything — return an empty pack with a
+        # placeholder cycle window so the client can render "no matches yet".
+        now = datetime.now(timezone.utc)
+        return DailyMatchPack(
+            assigned_at=now,
+            next_cycle_at=now + timedelta(hours=CYCLE_HOURS),
+            slots=[],
+        )
+
+    now = datetime.now(timezone.utc)
+    assigned_at = rows[0].assigned_at
+    next_cycle_at = assigned_at + timedelta(hours=CYCLE_HOURS)
+
+    slots: list[DailyMatchSlot] = []
+    for row in rows:
+        candidate_user = await db.get(User, row.candidate_id)
+        if candidate_user is None:
+            continue  # candidate was deleted — skip the slot
+
+        score = calculate(current_user, candidate_user).score
+        is_paid_slot = row.slot_index in PAID_SLOTS
+        unlock_at = _slot_unlock_at(assigned_at, row.slot_index)
+        is_locked = now < unlock_at
+
+        # Hide candidate identity entirely while time-locked — UI shows
+        # silhouette + countdown only.
+        if is_locked:
+            blank_candidate = MatchCandidate(
+                user_id=candidate_user.id,
+                score=score,
+                nickname=None,
+                age=None,
+                gender=None,
+                is_blinded=True,
+                photo_url=None,
+            )
+            card = blank_candidate
+        else:
+            card = _build_card_for(
+                candidate_user,
+                score=score,
+                viewer_is_paid=current_user.is_paid,
+                is_paid_slot=is_paid_slot,
+            )
+
+        slots.append(
+            DailyMatchSlot(
+                slot_index=row.slot_index,
+                match_basis=SLOT_BASIS[row.slot_index],
+                candidate=card,
+                assigned_at=assigned_at,
+                unlock_at=unlock_at,
+                is_locked=is_locked,
+                requires_payment=is_paid_slot,
+            )
+        )
+
+    slots.sort(key=lambda s: s.slot_index)
+    return DailyMatchPack(
+        assigned_at=assigned_at,
+        next_cycle_at=next_cycle_at,
+        slots=slots,
+    )
+
+
+async def list_match_history(
+    current_user: User, db: AsyncSession,
+) -> list[HistoryMatchEntry]:
+    """Cumulative match history — every candidate ever assigned to the user.
+
+    Deduplicated by candidate_id (most recent slot wins). Entries beyond
+    the current cycle stay listed; locks recompute against `now` so an
+    old slot 2/3 from yesterday's pack will show as unlocked today.
+    """
+    rows = (
+        await db.execute(
+            select(DailyMatch)
+            .where(DailyMatch.user_id == current_user.id)
+            .order_by(desc(DailyMatch.assigned_at), DailyMatch.slot_index)
+        )
+    ).scalars().all()
+
+    now = datetime.now(timezone.utc)
+    seen: set[int] = set()
+    entries: list[HistoryMatchEntry] = []
+    for row in rows:
+        if row.candidate_id in seen:
+            continue
+        seen.add(row.candidate_id)
+
+        candidate_user = await db.get(User, row.candidate_id)
+        if candidate_user is None:
+            continue
+
+        score = calculate(current_user, candidate_user).score
+        is_paid_slot = row.slot_index in PAID_SLOTS
+        unlock_at = _slot_unlock_at(row.assigned_at, row.slot_index)
+        is_locked = now < unlock_at
+
+        if is_locked:
+            card = MatchCandidate(
+                user_id=candidate_user.id,
+                score=score,
+                nickname=None,
+                age=None,
+                gender=None,
+                is_blinded=True,
+                photo_url=None,
+            )
+        else:
+            card = _build_card_for(
+                candidate_user,
+                score=score,
+                viewer_is_paid=current_user.is_paid,
+                is_paid_slot=is_paid_slot,
+            )
+
+        entries.append(
+            HistoryMatchEntry(
+                candidate=card,
+                slot_index=row.slot_index,
+                match_basis=SLOT_BASIS[row.slot_index],
+                assigned_at=row.assigned_at,
+                unlock_at=unlock_at,
+                is_locked=is_locked,
+                requires_payment=is_paid_slot,
+            )
+        )
+    return entries

@@ -7,8 +7,10 @@ from app.models.user import User
 from app.schemas.compatibility import (
     CompatibilityReport,
     CompatibilityScore,
+    DailyMatchPack,
     DateRecommendation,
     DestinyAnalysis,
+    HistoryMatchEntry,
     MatchCandidate,
 )
 from app.services import compatibility as compatibility_service
@@ -149,3 +151,37 @@ async def get_matches(
             detail="top_k 는 1~20 사이여야 합니다.",
         )
     return await compatibility_service.find_matches(current_user, db, top_k=top_k)
+
+
+@router.get("/today", response_model=DailyMatchPack)
+async def get_today_pack(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """오늘의 매칭 4-슬롯 카드 팩.
+
+    슬롯 정책:
+      0 → 사주 무료 (즉시 unlock)
+      1 → 자미두수 유료 (즉시 unlock 가능, 무료 사용자는 사진 블라인드)
+      2 → 사주 무료 (assigned_at + 24h 후 unlock)
+      3 → 자미두수 유료 (assigned_at + 24h 후 unlock + 무료 블라인드)
+
+    사이클(=4장 한 묶음)이 48시간 지났으면 자동으로 새 4장을 배정한다.
+    """
+    _require_birth_data(current_user, is_self=True)
+    return await compatibility_service.get_or_assign_today_pack(current_user, db)
+
+
+@router.get("/history", response_model=list[HistoryMatchEntry])
+async def get_match_history(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """누적 매칭 히스토리 — 그동안 노출됐던 모든 후보.
+
+    candidate_id 기준 dedup, 최근 노출 우선. 잠금 여부는 호출 시점의
+    현재 시간으로 재계산되므로, 어제 슬롯 2/3 으로 배정된 후보가 오늘
+    들어와 보면 자동으로 unlock 상태로 보인다.
+    """
+    _require_birth_data(current_user, is_self=True)
+    return await compatibility_service.list_match_history(current_user, db)
