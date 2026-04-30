@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
+from app.schemas.photo import UserPhotoListResponse, UserPhotoResponse
 from app.schemas.user import (
     BirthDataCreate,
     BirthDataUpdate,
@@ -12,8 +13,12 @@ from app.schemas.user import (
     PublicProfileResponse,
     UserProfileResponse,
 )
+from app.services import photos as photos_service
 from app.services import users as users_service
-from app.services.storage import StorageNotConfiguredError, upload_image
+from app.services.storage import (
+    StorageNotConfiguredError,
+    upload_image_full,
+)
 
 router = APIRouter()
 
@@ -103,7 +108,7 @@ async def upload_my_photo(
         )
 
     try:
-        url = upload_image(raw, public_id=f"user_{current_user.id}")
+        result = upload_image_full(raw, public_id=f"user_{current_user.id}")
     except StorageNotConfiguredError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -115,10 +120,138 @@ async def upload_my_photo(
             detail=f"이미지 호스팅 서버 오류: {e}",
         ) from e
 
-    current_user.photo_url = url
-    await db.commit()
+    current_user.photo_url = result["url"]
+
+    # Mirror into the gallery so old single-photo uploads show up in the
+    # new gallery modal. We update an existing row when this user already
+    # has a "user_{id}" entry rather than creating duplicates each call.
+    existing = await photos_service.list_photos(current_user, db)
+    legacy = next(
+        (p for p in existing if p.public_id and p.public_id.endswith(f"user_{current_user.id}")),
+        None,
+    )
+    if legacy is not None:
+        legacy.url = result["url"]
+        # promote it to primary so callers see it in match cards
+        for other in existing:
+            other.is_primary = other.id == legacy.id
+        await db.commit()
+        await db.refresh(current_user)
+        return current_user
+
+    await photos_service.add_photo(
+        current_user,
+        url=result["url"],
+        public_id=result["public_id"],
+        db=db,
+    )
     await db.refresh(current_user)
     return current_user
+
+
+# --- Multi-photo gallery ------------------------------------------------
+#
+# /me/photo (singular) above stays as the legacy endpoint that overwrites
+# users.photo_url directly. The endpoints below back the new gallery —
+# users can upload up to MAX_PHOTOS_PER_USER, delete any of them, and
+# choose which one is the primary photo shown in match cards.
+
+def _photo_response(photo) -> UserPhotoResponse:
+    return UserPhotoResponse.model_validate(photo, from_attributes=True)
+
+
+@router.get("/me/photos", response_model=UserPhotoListResponse)
+async def list_my_photos(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = await photos_service.list_photos(current_user, db)
+    return UserPhotoListResponse(
+        photos=[_photo_response(p) for p in rows],
+        primary_photo_url=photos_service.primary_photo_url(rows),
+    )
+
+
+@router.post("/me/photos", response_model=UserPhotoResponse)
+async def upload_my_photo_to_gallery(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Append a photo to the user's gallery. First upload becomes primary."""
+    if file.content_type not in _ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"이미지 형식만 업로드 가능합니다 (받은 형식: {file.content_type}).",
+        )
+
+    raw = await file.read()
+    if len(raw) > _MAX_PHOTO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"파일이 너무 큽니다. {_MAX_PHOTO_BYTES // (1024 * 1024)}MB 이하로 올려주세요.",
+        )
+
+    existing = await photos_service.list_photos(current_user, db)
+    if len(existing) >= photos_service.MAX_PHOTOS_PER_USER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"사진은 최대 {photos_service.MAX_PHOTOS_PER_USER}장까지 "
+                "등록 가능합니다."
+            ),
+        )
+
+    try:
+        result = upload_image_full(raw)  # auto-generated public_id
+    except StorageNotConfiguredError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"이미지 호스팅 서버 오류: {e}",
+        ) from e
+
+    photo = await photos_service.add_photo(
+        current_user,
+        url=result["url"],
+        public_id=result["public_id"],
+        db=db,
+    )
+    return _photo_response(photo)
+
+
+@router.delete("/me/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_my_photo(
+    photo_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = await photos_service.delete_photo(current_user, photo_id, db)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"photo_id={photo_id} 를 찾을 수 없습니다.",
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch("/me/photos/{photo_id}/primary", response_model=UserPhotoResponse)
+async def set_my_primary_photo(
+    photo_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    photo = await photos_service.set_primary(current_user, photo_id, db)
+    if photo is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"photo_id={photo_id} 를 찾을 수 없습니다.",
+        )
+    return _photo_response(photo)
 
 
 @router.post("/me/upgrade-demo", response_model=UserProfileResponse)

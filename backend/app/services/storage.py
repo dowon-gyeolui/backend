@@ -84,6 +84,80 @@ def upload_image(file_bytes: bytes, *, public_id: str | None = None) -> str:
     return secure_url
 
 
+def upload_image_full(
+    file_bytes: bytes,
+    *,
+    public_id: str | None = None,
+) -> dict[str, str]:
+    """Like upload_image but also returns Cloudinary's public_id.
+
+    Multi-photo galleries need public_id so we can delete the asset from
+    Cloudinary when the user removes a photo. The single-photo upload_image
+    above can stay simple since profile photos overwrite the same id.
+    """
+    _ensure_configured()
+
+    import cloudinary
+    import cloudinary.uploader
+
+    if not os.environ.get("CLOUDINARY_URL"):
+        cloudinary.config(
+            cloud_name=os.environ["CLOUDINARY_CLOUD_NAME"],
+            api_key=os.environ["CLOUDINARY_API_KEY"],
+            api_secret=os.environ["CLOUDINARY_API_SECRET"],
+            secure=True,
+        )
+
+    upload_kwargs: dict[str, object] = {
+        "folder": _FOLDER,
+        "resource_type": "image",
+        "format": "jpg",
+        "transformation": [
+            {"width": 800, "height": 800, "crop": "limit", "quality": "auto"},
+        ],
+    }
+    if public_id is not None:
+        upload_kwargs["public_id"] = public_id
+        upload_kwargs["overwrite"] = True
+
+    result = cloudinary.uploader.upload(file_bytes, **upload_kwargs)
+    secure_url = result.get("secure_url")
+    cloud_public_id = result.get("public_id")
+    if not isinstance(secure_url, str):
+        raise RuntimeError("Cloudinary did not return a secure_url")
+    return {
+        "url": secure_url,
+        "public_id": str(cloud_public_id) if cloud_public_id else "",
+    }
+
+
+def delete_image(public_id: str) -> None:
+    """Best-effort delete of a Cloudinary image by public_id.
+
+    Called when a user removes a photo from their gallery. We swallow
+    any error so the DB row is still removed even if the Cloudinary
+    side already evicted the asset.
+    """
+    if not public_id:
+        return
+    try:
+        _ensure_configured()
+        import cloudinary
+        import cloudinary.uploader
+
+        if not os.environ.get("CLOUDINARY_URL"):
+            cloudinary.config(
+                cloud_name=os.environ["CLOUDINARY_CLOUD_NAME"],
+                api_key=os.environ["CLOUDINARY_API_KEY"],
+                api_secret=os.environ["CLOUDINARY_API_SECRET"],
+                secure=True,
+            )
+        cloudinary.uploader.destroy(public_id, resource_type="image")
+    except Exception:
+        # Orphan asset is fine — DB is the source of truth for what's shown.
+        pass
+
+
 def _config_cloudinary() -> None:
     _ensure_configured()
     import cloudinary
