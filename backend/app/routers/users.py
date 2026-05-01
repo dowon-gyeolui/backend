@@ -77,11 +77,20 @@ async def patch_profile(
     return await users_service.patch_profile(current_user, data, db)
 
 
-# Hard-cap profile photos at 8 MB. Cloudinary's free tier has bandwidth
-# limits and there's no upside to letting users upload 50 MB selfies.
-_MAX_PHOTO_BYTES = 8 * 1024 * 1024
+# Hard-cap profile photos at 15 MB. 8 MB rejected modern Galaxy/Pixel
+# 50 MP shots straight from the gallery; 15 MB still leaves headroom
+# vs Cloudinary free-tier bandwidth without forcing users to compress.
+_MAX_PHOTO_BYTES = 15 * 1024 * 1024
 
-_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+_ALLOWED_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+    "image/avif",  # newer Pixel / OnePlus / Samsung browsers
+    "image/gif",   # screenshots from some Android skins
+}
 
 
 @router.post("/me/photo", response_model=UserProfileResponse)

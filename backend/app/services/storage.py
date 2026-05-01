@@ -68,9 +68,13 @@ def upload_image(file_bytes: bytes, *, public_id: str | None = None) -> str:
         # iPhone Safari uploads HEIC by default — force-convert at storage
         # time so secure_url ends in .jpg, which every browser can render.
         "format": "jpg",
-        # Square thumbnails for match cards. Cloudinary returns extra URLs
-        # we don't need; we just keep the secure_url.
+        # Android phones embed EXIF orientation tags ("rotate 90° CW for
+        # display") instead of rotating the pixel data. Without
+        # angle: "exif" Cloudinary strips the metadata and ships the
+        # un-rotated pixels — photo shows up sideways. Apply the
+        # rotation to actual pixels first, then it's safe to drop EXIF.
         "transformation": [
+            {"angle": "exif"},
             {"width": 800, "height": 800, "crop": "limit", "quality": "auto"},
         ],
     }
@@ -112,7 +116,10 @@ def upload_image_full(
         "folder": _FOLDER,
         "resource_type": "image",
         "format": "jpg",
+        # See upload_image — Android EXIF orientation gets stripped
+        # without losing the rotation info if we apply it first.
         "transformation": [
+            {"angle": "exif"},
             {"width": 800, "height": 800, "crop": "limit", "quality": "auto"},
         ],
     }
@@ -180,10 +187,12 @@ def upload_chat_image(file_bytes: bytes, *, sender_id: int) -> str:
         file_bytes,
         folder=f"{_CHAT_FOLDER}/img/{sender_id}",
         resource_type="image",
-        # Same HEIC concern as profile photos — normalize to .jpg so chat
-        # image messages render in any browser.
+        # Same HEIC + EXIF concerns as profile photos — apply EXIF
+        # rotation first, then normalize to .jpg so chat images render
+        # right-side-up across iOS/Android.
         format="jpg",
         transformation=[
+            {"angle": "exif"},
             {"width": 1280, "height": 1280, "crop": "limit", "quality": "auto"},
         ],
     )
