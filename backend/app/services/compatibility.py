@@ -575,24 +575,40 @@ PAID_SLOTS = {1, 3}
 LOCKED_INITIALLY_SLOTS = {2, 3}
 
 
-def _current_cycle_anchor() -> datetime:
-    """KST 정오(12:00) 기준으로 가장 최근의 정오 시각을 UTC 로 반환.
+def _snap_to_noon_kst(dt: datetime) -> datetime:
+    """주어진 UTC 시각을 KST 정오(12:00)로 round-down 해서 UTC 로 반환.
 
-    예: KST 2026-04-30 14:32 → KST 2026-04-30 12:00 → UTC 2026-04-30 03:00
-        KST 2026-04-30 09:15 → KST 2026-04-29 12:00 → UTC 2026-04-29 03:00
+    예: KST 2026-04-30 14:32 → KST 2026-04-30 12:00 → UTC 03:00
+        KST 2026-04-30 09:15 → KST 2026-04-29 12:00 → UTC 04-29 03:00
     """
-    now_kst = datetime.now(_KST)
-    noon_kst = now_kst.replace(hour=12, minute=0, second=0, microsecond=0)
-    if noon_kst > now_kst:
-        # 아직 오전 — 어제 정오가 가장 최근의 정오 anchor.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    kst_dt = dt.astimezone(_KST)
+    noon_kst = kst_dt.replace(hour=12, minute=0, second=0, microsecond=0)
+    if noon_kst > kst_dt:
         noon_kst -= timedelta(days=1)
     return noon_kst.astimezone(timezone.utc)
 
 
+def _current_cycle_anchor() -> datetime:
+    """현재 시점의 cycle anchor — 가장 최근 KST 정오."""
+    return _snap_to_noon_kst(datetime.now(timezone.utc))
+
+
 def _slot_unlock_at(assigned_at: datetime, slot_index: int) -> datetime:
+    """Compute slot unlock time anchored to noon, not raw assigned_at.
+
+    DB 에는 옛 코드 시절 (사용자 로그인 시각) 으로 저장된 row 가 그대로
+    살아있을 수 있어, 단순히 `assigned_at + LOCK_HOURS` 로 계산하면
+    잠금 해제 시각이 noon 이 아닌 임의 시각이 됨. 이 함수는 stored
+    assigned_at 을 항상 가장 최근 noon 으로 snap 한 뒤 LOCK_HOURS 를
+    더하므로, 옛 row 도 새 row 도 모두 KST 정오 단위로 정렬된 unlock
+    시각을 갖게 된다.
+    """
+    anchor = _snap_to_noon_kst(assigned_at)
     if slot_index in LOCKED_INITIALLY_SLOTS:
-        return assigned_at + timedelta(hours=LOCK_HOURS)
-    return assigned_at
+        return anchor + timedelta(hours=LOCK_HOURS)
+    return anchor
 
 
 def _build_card_for(
@@ -739,7 +755,12 @@ async def get_or_assign_today_pack(
     if not rows:
         needs_new = True
     else:
-        age = datetime.now(timezone.utc) - rows[0].assigned_at
+        # 사이클 만료 판단도 noon-snap 기준으로. DB 의 raw assigned_at
+        # 이 옛 코드로 인해 noon 이 아닐 수 있어, 그대로 쓰면 만료
+        # 시각이 임의 시각이 되어 새 사이클이 noon 이 아닌 시각에
+        # 시작될 수 있음. snap 으로 일관된 noon 정렬 보장.
+        anchor = _snap_to_noon_kst(rows[0].assigned_at)
+        age = datetime.now(timezone.utc) - anchor
         if age >= timedelta(hours=CYCLE_HOURS):
             needs_new = True
 
@@ -764,7 +785,10 @@ async def _materialize_pack(
         )
 
     now = datetime.now(timezone.utc)
-    assigned_at = rows[0].assigned_at
+    # 클라이언트가 표시할 anchor + next_cycle 도 noon 기준으로 일관되게.
+    # stored assigned_at 이 옛 row 라 noon 이 아니면 snap 해서 보정.
+    raw_assigned_at = rows[0].assigned_at
+    assigned_at = _snap_to_noon_kst(raw_assigned_at)
     next_cycle_at = assigned_at + timedelta(hours=CYCLE_HOURS)
 
     slots: list[DailyMatchSlot] = []
