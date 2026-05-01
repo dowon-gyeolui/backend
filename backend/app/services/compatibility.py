@@ -541,20 +541,29 @@ def build_destiny_analysis(user_a: User, user_b: User) -> DestinyAnalysis:
 
 # --- Daily 4-slot match assignment ----------------------------------------
 #
-# Cycle = 48 hours. A "pack" is the set of 4 DailyMatch rows sharing one
-# `assigned_at`. Slot policy:
+# Cycle = 96 hours, anchored to the most recent **정오 12:00 KST** so all
+# users in the same cycle window share the same `assigned_at` (deterministic,
+# fair, and easy to reason about — "오늘 정오 카드"). A "pack" is the set of
+# 4 DailyMatch rows sharing one `assigned_at`. Slot policy:
 #
-#   slot 0 → 사주 무료. Unlocked at assigned_at.
+#   slot 0 → 사주 무료. Unlocked at assigned_at (= 사이클 시작 정오 12:00).
 #   slot 1 → 자미두수 유료. Unlocked at assigned_at, photo blinded if !paid.
-#   slot 2 → 사주 무료. Unlocked at assigned_at + 24h.
-#   slot 3 → 자미두수 유료. Unlocked at assigned_at + 24h, blinded if !paid.
+#   slot 2 → 사주 무료. Unlocked at assigned_at + 72h (= 3일 후 정오 12:00).
+#   slot 3 → 자미두수 유료. Unlocked at assigned_at + 72h, blinded if !paid.
+#
+# 사용자 로그인 시간이 아니라 정오 기준이라, 하루 동안 여러 번 로그인해도
+# 같은 카운트다운(타이머)을 보고, 다른 사용자도 같은 시각에 unlock 됨.
 #
 # A new pack is generated on the first /compatibility/today call once the
-# previous pack's assigned_at + 48h has passed. Older packs stay in
+# previous pack's assigned_at + 96h has passed (= 잠금 해제 후 24시간 동안
+# 4 장 모두 열린 상태로 볼 수 있는 버퍼). Older packs stay in
 # `daily_matches` to feed the cumulative history list.
 
-CYCLE_HOURS = 48
-LOCK_HOURS = 24
+# Korea Standard Time — assigned_at 을 KST 정오에 맞추기 위해 사용.
+_KST = timezone(timedelta(hours=9))
+
+CYCLE_HOURS = 96
+LOCK_HOURS = 72
 SLOT_COUNT = 4
 SLOT_BASIS: dict[int, Literal["saju", "jamidusu"]] = {
     0: "saju",
@@ -564,6 +573,20 @@ SLOT_BASIS: dict[int, Literal["saju", "jamidusu"]] = {
 }
 PAID_SLOTS = {1, 3}
 LOCKED_INITIALLY_SLOTS = {2, 3}
+
+
+def _current_cycle_anchor() -> datetime:
+    """KST 정오(12:00) 기준으로 가장 최근의 정오 시각을 UTC 로 반환.
+
+    예: KST 2026-04-30 14:32 → KST 2026-04-30 12:00 → UTC 2026-04-30 03:00
+        KST 2026-04-30 09:15 → KST 2026-04-29 12:00 → UTC 2026-04-29 03:00
+    """
+    now_kst = datetime.now(_KST)
+    noon_kst = now_kst.replace(hour=12, minute=0, second=0, microsecond=0)
+    if noon_kst > now_kst:
+        # 아직 오전 — 어제 정오가 가장 최근의 정오 anchor.
+        noon_kst -= timedelta(days=1)
+    return noon_kst.astimezone(timezone.utc)
 
 
 def _slot_unlock_at(assigned_at: datetime, slot_index: int) -> datetime:
@@ -675,8 +698,12 @@ async def _create_new_pack(
     )
     top = scored[:SLOT_COUNT]
 
-    # Use a single timestamp for all 4 rows so they share a cycle key.
-    now = datetime.now(timezone.utc)
+    # Snap assigned_at to the most recent KST 자정 so all 4 rows share a
+    # deterministic, all-users-aligned cycle key. Two users who first hit
+    # /today within the same calendar day (KST) will see exactly the
+    # same countdown timer, and slot 2/3 unlocks at the same wall-clock
+    # moment for everyone — easier to reason about than per-user windows.
+    cycle_anchor = _current_cycle_anchor()
     rows: list[DailyMatch] = []
     for slot_index in range(SLOT_COUNT):
         if slot_index >= len(top):
@@ -689,7 +716,7 @@ async def _create_new_pack(
                 user_id=current_user.id,
                 candidate_id=candidate.id,
                 slot_index=slot_index,
-                assigned_at=now,
+                assigned_at=cycle_anchor,
             )
         )
 
