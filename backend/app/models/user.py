@@ -44,5 +44,11 @@ class User(Base):
 
     # --- Payment / flags ---
     is_paid = Column(Boolean, default=False, nullable=False)
+
+    # Chat moderation cooldown — when set, attempts to send a chat
+    # message before this timestamp are rejected with a 정지 message.
+    # Cleared automatically by passing time (we just check `now <`).
+    chat_suspended_until = Column(DateTime(timezone=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)

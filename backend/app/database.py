@@ -48,6 +48,10 @@ _DEV_COLUMNS: list[tuple[str, str, str]] = [
     ("chat_threads", "user_b_last_read_id", "INTEGER NOT NULL DEFAULT 0"),
     ("chat_threads", "user_a_left", "BOOLEAN NOT NULL DEFAULT FALSE"),
     ("chat_threads", "user_b_left", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # 채팅 모더레이션 정지 만료 시각 (NULL = 정지 아님). TIMESTAMP 문법은
+    # SQLite·PostgreSQL 모두 인식. timezone 정보는 application 측에서
+    # datetime.now(timezone.utc) 로 처리하므로 별도 WITH TIME ZONE 불필요.
+    ("users", "chat_suspended_until", "TIMESTAMP"),
 ]
 
 

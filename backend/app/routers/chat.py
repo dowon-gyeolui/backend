@@ -10,6 +10,7 @@ returns only messages with id > after_id, so the client can append new
 ones cheaply every couple of seconds.
 """
 
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from fastapi import (
@@ -27,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.chat import ChatThread, Message
+from app.models.moderation import UserStrike
 from app.models.user import User
 from app.schemas.chat import (
     ChatPeer,
@@ -34,11 +36,91 @@ from app.schemas.chat import (
     MessageCreate,
     MessageOut,
 )
+from app.services.chat_moderation import moderate_chat_message
 from app.services.storage import (
     StorageNotConfiguredError,
     upload_chat_audio,
     upload_chat_image,
 )
+
+
+# Strike escalation policy.
+#   1~2 strikes: warn-only (block message, no suspension)
+#   3+ strikes within rolling 24h: 24-hour chat suspension
+# Tunables here so we can iterate without touching the moderation logic.
+_STRIKE_WINDOW = timedelta(hours=24)
+_SUSPENSION_THRESHOLD = 3
+_SUSPENSION_DURATION = timedelta(hours=24)
+
+
+async def _check_chat_active(user: User) -> None:
+    """Raise if the user is currently within a moderation cooldown."""
+    now = datetime.now(timezone.utc)
+    until = user.chat_suspended_until
+    if until is None:
+        return
+    # SQLite returns naive datetimes; treat them as UTC. Postgres returns
+    # tz-aware. Normalize so the comparison is meaningful.
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+    if until <= now:
+        return
+    remaining = until - now
+    hours = max(1, int(remaining.total_seconds() // 3600))
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"부적절한 메시지 누적으로 채팅이 일시 정지됐어요. {hours}시간 후 다시 이용 가능해요.",
+    )
+
+
+async def _enforce_chat_moderation(
+    user: User, content: str, db: AsyncSession,
+) -> None:
+    """Run moderation and bookkeep strikes/suspension. Raises HTTPException
+    on block — caller short-circuits the message send.
+    """
+    if not (content or "").strip():
+        return  # empty content; let the upstream Pydantic validator handle
+
+    result = moderate_chat_message(content)
+    if result.ok:
+        return
+
+    # Record the strike before raising so the count is durable even if
+    # the request is retried.
+    db.add(
+        UserStrike(
+            user_id=user.id,
+            kind=result.kind or "other",
+            detail=result.detail,
+        )
+    )
+
+    # Count recent strikes inside the rolling window. We commit after
+    # the count so the just-added strike is included.
+    await db.commit()
+
+    cutoff = datetime.now(timezone.utc) - _STRIKE_WINDOW
+    recent_count = (
+        await db.execute(
+            select(func.count(UserStrike.id))
+            .where(UserStrike.user_id == user.id)
+            .where(UserStrike.created_at >= cutoff)
+        )
+    ).scalar_one() or 0
+
+    suspension_msg = ""
+    if recent_count >= _SUSPENSION_THRESHOLD:
+        user.chat_suspended_until = datetime.now(timezone.utc) + _SUSPENSION_DURATION
+        await db.commit()
+        suspension_msg = (
+            f" 누적 {recent_count}회로 채팅이 24시간 정지됩니다."
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=(result.reason or "메시지를 보낼 수 없어요.") + suspension_msg,
+    )
 
 router = APIRouter()
 
@@ -391,6 +473,10 @@ async def send_message_to_peer(
             detail=f"user_id={peer_id} not found",
         )
 
+    # 자동 모더레이션: 정지 상태 / 부적절 콘텐츠 둘 다 여기서 차단.
+    await _check_chat_active(current_user)
+    await _enforce_chat_moderation(current_user, body.content, db)
+
     thread = await _get_or_create_thread(current_user.id, peer_id, db)
 
     msg = Message(
@@ -437,6 +523,12 @@ async def send_media_message(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"user_id={peer_id} not found",
         )
+
+    await _check_chat_active(current_user)
+    # Caption 만 텍스트 모더레이션 — 이미지·오디오 자체 모더레이션은
+    # 향후 별도 흐름(Rekognition 영상)으로 이관.
+    if caption:
+        await _enforce_chat_moderation(current_user, caption, db)
 
     if media_type == "image":
         if file.content_type not in _ALLOWED_IMAGE_TYPES:

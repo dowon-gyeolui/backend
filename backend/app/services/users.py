@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import ChatThread, Message
 from app.models.daily_match import DailyMatch
+from app.models.moderation import UserStrike
 from app.models.photo import UserPhoto
 from app.models.report import Report
 from app.models.user import User
@@ -178,6 +179,11 @@ async def delete_account(user: User, db: AsyncSession) -> None:
         )
     )
 
-    # 6) Finally, the user.
+    # 6) Moderation strike audit log.
+    await db.execute(
+        delete(UserStrike).where(UserStrike.user_id == user.id)
+    )
+
+    # 7) Finally, the user.
     await db.delete(user)
     await db.commit()

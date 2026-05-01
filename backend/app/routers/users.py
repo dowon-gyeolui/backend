@@ -15,6 +15,7 @@ from app.schemas.user import (
 )
 from app.services import photos as photos_service
 from app.services import users as users_service
+from app.services.photo_moderation import verify_profile_photo
 from app.services.storage import (
     StorageNotConfiguredError,
     upload_image_full,
@@ -105,6 +106,16 @@ async def upload_my_photo(
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"파일이 너무 큽니다. {_MAX_PHOTO_BYTES // (1024 * 1024)}MB 이하로 올려주세요.",
+        )
+
+    # Run face + NSFW moderation BEFORE we waste a Cloudinary upload on
+    # a photo we'd just have to delete. The check is cheap (~2¢ KRW per
+    # photo) and fails fast on obviously unusable shots.
+    moderation = verify_profile_photo(raw)
+    if not moderation.ok:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=moderation.reason or "사진 검증에 실패했어요.",
         )
 
     try:
@@ -200,6 +211,13 @@ async def upload_my_photo_to_gallery(
                 f"사진은 최대 {photos_service.MAX_PHOTOS_PER_USER}장까지 "
                 "등록 가능합니다."
             ),
+        )
+
+    moderation = verify_profile_photo(raw)
+    if not moderation.ok:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=moderation.reason or "사진 검증에 실패했어요.",
         )
 
     try:
