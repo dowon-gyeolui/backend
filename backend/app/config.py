@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     kakao_client_id: str = ""
     kakao_client_secret: str = ""
     kakao_redirect_uri: str = "http://localhost:8000/auth/kakao/callback"
+    # 어드민 키 — 사용자 탈퇴 시 unlink API 호출용. 비어 있으면 unlink
+    # 호출이 스킵되고, 같은 kakao_id 로 재가입할 때 동의 화면이 안 뜸.
+    # Kakao Developers → 내 애플리케이션 → 앱 설정 → 앱 키 → 어드민 키.
+    kakao_admin_key: str = ""
 
     secret_key: str = "dev-secret-key-change-in-production"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days

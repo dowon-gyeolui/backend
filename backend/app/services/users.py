@@ -184,6 +184,18 @@ async def delete_account(user: User, db: AsyncSession) -> None:
         delete(UserStrike).where(UserStrike.user_id == user.id)
     )
 
-    # 7) Finally, the user.
+    # Snapshot the kakao_id BEFORE deleting the row so we can unlink
+    # on Kakao's side even after our DB record is gone.
+    kakao_id = user.kakao_id
+
+    # 7) Our user row.
     await db.delete(user)
     await db.commit()
+
+    # 8) Tell Kakao the user is gone — without this, the user's "동의 완료"
+    #    state on Kakao persists, and a re-signup flows in silently
+    #    without showing the consent screen. Best-effort: failure here
+    #    doesn't roll back the local delete (already committed above).
+    if kakao_id:
+        from app.services.auth import unlink_kakao_user
+        await unlink_kakao_user(kakao_id)
