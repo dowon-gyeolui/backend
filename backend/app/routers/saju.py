@@ -8,8 +8,10 @@ from app.schemas.saju import (
     DetailedSajuResponse,
     JamidusuResponse,
     SajuResponse,
+    TodayFortuneResponse,
 )
 from app.services import saju as saju_service
+from app.services.fortune import compute_today_fortune
 
 router = APIRouter()
 
@@ -47,6 +49,33 @@ async def get_my_saju_detailed(
     _require_birth_date(current_user)
     saju = saju_service.calculate(current_user)
     return await saju_service.enrich_with_detailed_interpretation(saju, db)
+
+
+@router.get("/me/today-fortune", response_model=TodayFortuneResponse)
+async def get_my_today_fortune(
+    current_user: User = Depends(get_current_user),
+):
+    """오늘의 인연운 — 사용자 사주 + 오늘 일진(日辰) 기반 일일 fortune.
+
+    매일 KST 자정에 일주가 바뀌므로 결과 문구도 매일 갱신됨. 같은 날
+    동일 사용자는 항상 동일 문구 (date+user_id seed). LLM 호출 없이
+    rule-based 템플릿 풀에서 결정론적 선택.
+    """
+    _require_birth_date(current_user)
+    fortune = compute_today_fortune(current_user)
+    if fortune is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="오늘의 인연운을 계산하지 못했어요. 사주 정보를 확인해주세요.",
+        )
+    return TodayFortuneResponse(
+        fortune_text=fortune.fortune_text,
+        today_pillar=fortune.today_pillar,
+        today_pillar_hanja=fortune.today_pillar_hanja,
+        relation=fortune.relation,
+        element_today=fortune.element_today,
+        score=fortune.score,
+    )
 
 
 @router.get("/me/jamidusu", response_model=JamidusuResponse)

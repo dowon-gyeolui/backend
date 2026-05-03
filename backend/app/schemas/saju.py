@@ -95,6 +95,21 @@ class DetailedSajuResponse(SajuResponse):
     advice: str = ""
 
 
+class TodayFortuneResponse(BaseModel):
+    """오늘의 인연운 — 사용자 사주 + 오늘 일진 기반 일일 fortune.
+
+    fortune_text 는 클라이언트가 그대로 표시. 나머지 필드는 디버깅 +
+    UI 보조 (예: 오늘 일주를 작게 노출하거나 별점 표시 등).
+    """
+
+    fortune_text: str
+    today_pillar: str
+    today_pillar_hanja: str
+    relation: str          # 십성 (정재/식신/...)
+    element_today: str     # 오행 한글 (목/화/토/금/수)
+    score: int             # 1~5
+
+
 class JamidusuPalace(BaseModel):
     """One of the 12 자미두수 palaces with its LLM-generated reading."""
 
