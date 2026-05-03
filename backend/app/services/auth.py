@@ -10,6 +10,7 @@ Two HTTP calls are needed against Kakao's API:
 Errors from Kakao are surfaced as ``HTTPException(400)`` so the caller's
 redirect handler can display something reasonable instead of a generic 500.
 """
+import logging
 from typing import Any
 
 import httpx
@@ -20,9 +21,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.user import User
 
+logger = logging.getLogger(__name__)
+
 KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
 KAKAO_USER_INFO_URL = "https://kapi.kakao.com/v2/user/me"
 KAKAO_UNLINK_URL = "https://kapi.kakao.com/v1/user/unlink"
+
+# 카카오에 요청할 동의 항목. 콘솔(앱 설정 → 카카오 로그인 → 동의 항목)
+# 에서 각 scope 의 "필수"/"선택" 여부를 설정해야 사용자에게 picker 가
+# 노출된다. 모두 "필수" 로 두면 picker 없이 단일 동의 버튼만 뜸.
+#
+# scope 지정으로 카카오에 "이 항목들에 대해 (다시) 동의 받아라" 신호를
+# 명시적으로 주는 효과 — unlink 후 silent grant 가 일어나는 것을 막는
+# 부수 효과도 있음.
+KAKAO_OAUTH_SCOPES = [
+    "profile_nickname",   # 닉네임 (보통 필수)
+    "profile_image",      # 프로필 이미지 (보통 필수)
+    "account_email",      # 이메일 (선택 추천 — 알림용)
+]
 
 
 def kakao_authorize_url() -> str:
@@ -31,6 +47,7 @@ def kakao_authorize_url() -> str:
         "client_id": settings.kakao_client_id,
         "redirect_uri": settings.kakao_redirect_uri,
         "response_type": "code",
+        "scope": ",".join(KAKAO_OAUTH_SCOPES),
     }
     qs = "&".join(f"{k}={v}" for k, v in params.items())
     return f"https://kauth.kakao.com/oauth/authorize?{qs}"
@@ -89,16 +106,23 @@ async def unlink_kakao_user(kakao_id: str) -> None:
     않는다"는 신호를 Kakao 에 보내지 않는 셈.
 
     어드민 키(KAKAO_ADMIN_KEY) 가 설정되어 있으면 access_token 없이도
-    target_id_type=user_id 방식으로 unlink 가능. 키가 없으면 best-effort
-    로 스킵하고 경고 로그만 (로컬 dev 환경 보호).
+    target_id_type=user_id 방식으로 unlink 가능. 키가 없으면 명확하게
+    경고 로그를 남긴다 — silent skip 으로 인한 디버깅 어려움 방지.
 
     Kakao 가 4xx/5xx 를 돌려줘도 우리 쪽 탈퇴는 진행한다 — 사용자가
     이미 다른 데서 unlink 했거나 Kakao 일시 장애 일 수 있고, 그렇다고
     해서 우리 DB 의 탈퇴 자체가 막혀선 안 됨.
     """
     if not settings.kakao_admin_key:
-        # Local dev or misconfigured prod — log and skip rather than fail.
+        logger.warning(
+            "KAKAO_ADMIN_KEY 가 설정되지 않아 unlink 호출을 스킵합니다. "
+            "재가입 시 동의 화면이 뜨지 않을 수 있습니다. "
+            "Render Dashboard 에서 KAKAO_ADMIN_KEY 환경변수를 설정해주세요. "
+            "(kakao_id=%s)",
+            kakao_id,
+        )
         return
+
     headers = {
         "Authorization": f"KakaoAK {settings.kakao_admin_key}",
         "Content-Type": "application/x-www-form-urlencoded",
@@ -109,12 +133,22 @@ async def unlink_kakao_user(kakao_id: str) -> None:
     }
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.post(KAKAO_UNLINK_URL, headers=headers, data=data)
-    except Exception:
-        # Network error / Kakao downtime — swallow so the user-facing
-        # delete still succeeds. Strikes/photos/etc. are already wiped
-        # by the time we reach this call.
-        pass
+            resp = await client.post(KAKAO_UNLINK_URL, headers=headers, data=data)
+        if resp.status_code == 200:
+            logger.info("Kakao unlink 성공: kakao_id=%s", kakao_id)
+        else:
+            # 4xx/5xx — 사용자 탈퇴는 진행하되 무엇이 실패했는지 로그.
+            # 자주 보이는 케이스:
+            #   401 — 어드민 키 잘못됨 (KAKAO_ADMIN_KEY 재확인)
+            #   400 — target_id 형식 오류 또는 이미 unlink 된 사용자
+            logger.warning(
+                "Kakao unlink 실패: kakao_id=%s status=%d body=%s",
+                kakao_id,
+                resp.status_code,
+                resp.text,
+            )
+    except Exception as e:
+        logger.exception("Kakao unlink 예외: kakao_id=%s err=%s", kakao_id, e)
 
 
 async def upsert_kakao_user(profile: dict[str, Any], db: AsyncSession) -> User:
