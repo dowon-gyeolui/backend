@@ -28,9 +28,13 @@ logger = logging.getLogger(__name__)
 
 
 # Tunables — exposed as constants so we can A/B them later without
-# redeploying. The face-area threshold is roughly "if the face occupies
-# less than 8% of the frame, the user is too far / too small in shot."
-MIN_FACE_AREA_RATIO = 0.08
+# redeploying.
+#
+# 25% face-area threshold: 단순 "얼굴이 보이는" 사진이 아니라 "얼굴이
+# 사진의 주된 피사체" 인 사진만 통과. 전신 사진 / 풍경 + 사람 작게
+# 등은 거절. 이를 통해 모든 업로드 사진을 "검증된 얼굴 사진" 으로
+# 취급할 수 있고, 매칭 카드에 ZAMI 공식 인증 뱃지를 노출하는 근거가 됨.
+MIN_FACE_AREA_RATIO = 0.25
 MIN_FACE_CONFIDENCE = 90.0  # Rekognition confidence (0..100)
 MAX_FACES = 1               # Only single-person photos pass
 NSFW_BLOCK_LABELS = {
@@ -169,7 +173,10 @@ def verify_profile_photo(image_bytes: bytes) -> ModerationResult:
     if area_ratio < MIN_FACE_AREA_RATIO:
         return ModerationResult(
             ok=False,
-            reason="얼굴이 더 크게 나오는 사진을 올려주세요.",
+            reason=(
+                "얼굴이 사진의 25% 이상 보여야 등록할 수 있어요. "
+                "얼굴 위주의 셀카 형태로 다시 올려주세요."
+            ),
             detail=f"face_area_ratio={area_ratio:.3f}",
         )
 

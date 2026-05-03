@@ -36,8 +36,14 @@ async def add_photo(
     url: str,
     public_id: str,
     db: AsyncSession,
+    is_face_verified: bool = True,
 ) -> UserPhoto:
     """Append a new photo. The first photo becomes primary automatically.
+
+    `is_face_verified` defaults to True because under our strict (option B)
+    policy, photo_moderation rejects non-face uploads BEFORE this function
+    is called — anything that reaches here has passed strict face check.
+    Legacy callers can pass False if needed.
 
     Caller is responsible for enforcing MAX_PHOTOS_PER_USER (router does
     so before invoking the upload to avoid a wasted Cloudinary call).
@@ -52,6 +58,7 @@ async def add_photo(
         public_id=public_id,
         position=next_position,
         is_primary=is_primary,
+        is_face_verified=is_face_verified,
     )
     db.add(photo)
 

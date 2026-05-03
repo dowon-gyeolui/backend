@@ -10,6 +10,7 @@ class UserPhotoResponse(BaseModel):
     id: int
     url: str
     is_primary: bool
+    is_face_verified: bool = False
     position: int
     created_at: datetime
 

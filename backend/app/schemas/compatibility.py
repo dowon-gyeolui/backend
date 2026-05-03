@@ -99,6 +99,11 @@ class MatchCandidate(BaseModel):
     dominant_element: Optional[str] = None
     mbti: Optional[str] = None
 
+    # ZAMI 공식 얼굴 인증 뱃지 표시용 — 후보의 메인 사진이 strict
+    # face check 를 통과했는지. 매칭 카드에서 사용자에게 신뢰도
+    # 시그널로 노출됨.
+    is_face_verified: bool = False
+
 
 class DailyMatchSlot(BaseModel):
     """One slot within today's 4-card pack.

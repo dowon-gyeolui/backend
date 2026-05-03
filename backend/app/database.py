@@ -52,6 +52,9 @@ _DEV_COLUMNS: list[tuple[str, str, str]] = [
     # SQLite·PostgreSQL 모두 인식. timezone 정보는 application 측에서
     # datetime.now(timezone.utc) 로 처리하므로 별도 WITH TIME ZONE 불필요.
     ("users", "chat_suspended_until", "TIMESTAMP"),
+    # ZAMI 공식 얼굴 인증 통과 여부. strict 모더레이션(얼굴 면적 25%+)
+    # 통과한 사진만 True. legacy 행은 default FALSE.
+    ("user_photos", "is_face_verified", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 

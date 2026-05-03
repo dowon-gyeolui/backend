@@ -47,7 +47,7 @@ async def get_public_profile(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"user_id={user_id} 를 찾을 수 없습니다.",
         )
-    return users_service.build_public_profile(current_user, target)
+    return await users_service.build_public_profile(current_user, target, db)
 
 
 @router.post("/me/birth-data", response_model=UserProfileResponse)
@@ -155,6 +155,8 @@ async def upload_my_photo(
         # promote it to primary so callers see it in match cards
         for other in existing:
             other.is_primary = other.id == legacy.id
+        # Re-uploaded under strict moderation → mark verified.
+        legacy.is_face_verified = True
         await db.commit()
         await db.refresh(current_user)
         return current_user

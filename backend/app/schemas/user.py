@@ -159,3 +159,6 @@ class PublicProfileResponse(BaseModel):
     # Compatibility score against the caller — convenient so the detail
     # page doesn't need a separate /compatibility/score round-trip.
     compatibility_score: Optional[int] = None
+
+    # ZAMI 공식 얼굴 인증 뱃지 — 메인 사진이 strict face check 통과 시 True.
+    is_face_verified: bool = False

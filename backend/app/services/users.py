@@ -46,20 +46,37 @@ async def patch_profile(user: User, data: ProfileUpdate, db: AsyncSession) -> Us
     return user
 
 
-def build_public_profile(viewer: User, target: User) -> PublicProfileResponse:
+async def build_public_profile(
+    viewer: User, target: User, db: AsyncSession,
+) -> PublicProfileResponse:
     """Build a viewer-aware public profile of `target`.
 
     Free-tier viewers (is_paid=False) get the photo blinded — the field is
     set to None and is_blinded=True so the frontend can render a locked
     teaser. Paid viewers see the photo. Sensitive fields (kakao_id, exact
     birth_date/time, is_paid) are never returned.
+
+    is_face_verified — target 의 메인 사진이 strict face check 통과 시
+    True. 프론트가 ZAMI 공식 인증 뱃지 노출 여부 판단.
     """
     from app.services import compatibility as compatibility_service
     from app.services.saju import calculate as calculate_saju
+    from app.models.photo import UserPhoto
 
     is_blinded = not viewer.is_paid
 
     age = compatibility_service._compute_age(target.birth_date)
+
+    # 메인 사진의 ZAMI 공식 인증 통과 여부.
+    primary_photo = (
+        await db.execute(
+            select(UserPhoto)
+            .where(UserPhoto.user_id == target.id)
+            .where(UserPhoto.is_primary.is_(True))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    is_face_verified = bool(primary_photo and primary_photo.is_face_verified)
 
     dominant_ko: str | None = None
     day_pillar: str | None = None
@@ -104,6 +121,7 @@ def build_public_profile(viewer: User, target: User) -> PublicProfileResponse:
         dominant_element=dominant_ko,
         day_pillar=day_pillar,
         compatibility_score=score,
+        is_face_verified=is_face_verified,
     )
 
 

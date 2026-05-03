@@ -382,6 +382,9 @@ async def find_matches(
         select(User)
         .where(User.id != current_user.id)
         .where(User.birth_date.is_not(None))
+        # 사진 없는 사용자는 매칭 풀에서 제외 (얼굴 사진 등록이 시작
+        # 조건). photo_url 은 갤러리의 primary 사진 url 미러링.
+        .where(User.photo_url.is_not(None))
     )
     # Default dating-app behaviour: prefer opposite-gender candidates.
     # When the current user has no gender set we don't filter — show all.
@@ -414,6 +417,7 @@ async def find_matches(
             # preview ("see what you're missing"). The frontend applies
             # blur whenever is_blinded is True.
             photo_url=candidate.photo_url,
+            is_face_verified=await _is_primary_face_verified(candidate, db),
         )
         if not is_blinded:
             saju = calculate_saju(candidate)
@@ -425,6 +429,24 @@ async def find_matches(
             card.mbti = candidate.mbti
         results.append(card)
     return results
+
+
+async def _is_primary_face_verified(user: User, db: AsyncSession) -> bool:
+    """후보의 메인 사진이 strict face check 를 통과했는지.
+
+    매칭 카드의 ZAMI 공식 인증 뱃지 표시용. user_photos 테이블에서
+    is_primary=True 인 row 의 is_face_verified 플래그 확인.
+    """
+    from app.models.photo import UserPhoto
+    primary = (
+        await db.execute(
+            select(UserPhoto)
+            .where(UserPhoto.user_id == user.id)
+            .where(UserPhoto.is_primary.is_(True))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return bool(primary and primary.is_face_verified)
 
 
 # --- Date recommendation ----------------------------------------------
@@ -617,6 +639,7 @@ def _build_card_for(
     score: int,
     viewer_is_paid: bool,
     is_paid_slot: bool,
+    is_face_verified: bool = False,
 ) -> MatchCandidate:
     """Build a MatchCandidate respecting per-slot photo policy.
 
@@ -633,6 +656,7 @@ def _build_card_for(
         gender=candidate.gender,
         is_blinded=is_blinded,
         photo_url=candidate.photo_url,
+        is_face_verified=is_face_verified,
     )
     if not is_blinded:
         try:
@@ -683,11 +707,17 @@ async def _latest_pack(
 async def _candidate_pool(
     current_user: User, db: AsyncSession,
 ) -> list[User]:
-    """Eligible candidates for assignment — same gender filter as live matches."""
+    """Eligible candidates for assignment — same gender filter as live matches.
+
+    얼굴 사진 등록 안 한 사용자는 매칭 풀에서 제외 (option B 정책).
+    photo_url 은 갤러리 primary 사진 url 미러링이므로 NOT NULL =
+    "최소 한 장의 검증된 얼굴 사진을 등록함" 의미.
+    """
     stmt = (
         select(User)
         .where(User.id != current_user.id)
         .where(User.birth_date.is_not(None))
+        .where(User.photo_url.is_not(None))
     )
     if current_user.gender == "male":
         stmt = stmt.where(User.gender == "female")
@@ -821,6 +851,7 @@ async def _materialize_pack(
                 score=score,
                 viewer_is_paid=current_user.is_paid,
                 is_paid_slot=is_paid_slot,
+                is_face_verified=await _is_primary_face_verified(candidate_user, db),
             )
 
         slots.append(
@@ -893,6 +924,7 @@ async def list_match_history(
                 score=score,
                 viewer_is_paid=current_user.is_paid,
                 is_paid_slot=is_paid_slot,
+                is_face_verified=await _is_primary_face_verified(candidate_user, db),
             )
 
         entries.append(
