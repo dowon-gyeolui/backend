@@ -5,12 +5,15 @@ from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.saju import (
+    ActionGuideResponse,
+    ActionGuideTip,
     DetailedSajuResponse,
     JamidusuResponse,
     SajuResponse,
     TodayFortuneResponse,
 )
 from app.services import saju as saju_service
+from app.services.action_guide import build_action_guide
 from app.services.fortune import compute_today_fortune
 
 router = APIRouter()
@@ -75,6 +78,35 @@ async def get_my_today_fortune(
         relation=fortune.relation,
         element_today=fortune.element_today,
         score=fortune.score,
+        headline=fortune.headline,
+        person_type=fortune.person_type,
+        timing=fortune.timing,
+        place=fortune.place,
+        caution=fortune.caution,
+        lucky_color=fortune.lucky_color,
+        badges=fortune.badges,
+    )
+
+
+@router.get("/me/action-guide", response_model=ActionGuideResponse)
+async def get_my_action_guide(
+    current_user: User = Depends(get_current_user),
+):
+    """오늘의 행동 가이드 — 사주 기반 동적 추천 (반말).
+
+    사용자 일주 + 오행 분포 + 오늘 일진 종합. 색상/시간대/장소/의상/
+    향수/음식/방위/숫자/잘 맞는 띠 등 항목별 추천. LLM 호출 없음.
+    """
+    _require_birth_date(current_user)
+    guide = build_action_guide(current_user)
+    if guide is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="행동 가이드를 만들지 못했어요. 사주 정보를 확인해줘.",
+        )
+    return ActionGuideResponse(
+        headline=guide["headline"],
+        tips=[ActionGuideTip(**t) for t in guide["tips"]],
     )
 
 

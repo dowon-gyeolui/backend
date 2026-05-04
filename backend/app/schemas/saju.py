@@ -96,18 +96,44 @@ class DetailedSajuResponse(SajuResponse):
 
 
 class TodayFortuneResponse(BaseModel):
-    """오늘의 인연운 — 사용자 사주 + 오늘 일진 기반 일일 fortune.
+    """오늘의 인연운 — 사용자 사주 + 오늘 일진 기반 일일 fortune (multi-section).
 
-    fortune_text 는 클라이언트가 그대로 표시. 나머지 필드는 디버깅 +
-    UI 보조 (예: 오늘 일주를 작게 노출하거나 별점 표시 등).
+    fortune_text 는 메인 한 줄. 나머지 필드는 카드의 세부 칸:
+      - person_type: 만나는 사람 성향
+      - timing: 만남 좋은 시간대
+      - place: 만남 좋은 장소 분위기
+      - caution: 주의사항
+      - lucky_color: 행운 색상
+      - badges: ["도화 발동", "삼합 길일", "천을귀인 길일"] 같은 강조 칩
     """
 
     fortune_text: str
     today_pillar: str
     today_pillar_hanja: str
-    relation: str          # 십성 (정재/식신/...)
-    element_today: str     # 오행 한글 (목/화/토/금/수)
-    score: int             # 1~5
+    relation: str
+    element_today: str
+    score: int
+    headline: str = ""
+    person_type: str = ""
+    timing: str = ""
+    place: str = ""
+    caution: str = ""
+    lucky_color: str = ""
+    badges: list[str] = []
+
+
+class ActionGuideTip(BaseModel):
+    """행동 가이드 한 항목 — 라벨 + 본문 한 줄."""
+
+    label: str   # "오늘의 컬러"
+    value: str   # "초록 — 액세서리 한 포인트로 살짝"
+
+
+class ActionGuideResponse(BaseModel):
+    """오늘의 행동 가이드 — 사주 기반 동적 추천 (반말 톤)."""
+
+    headline: str  # 한 줄 인삿말 (반말)
+    tips: list[ActionGuideTip]
 
 
 class JamidusuPalace(BaseModel):
