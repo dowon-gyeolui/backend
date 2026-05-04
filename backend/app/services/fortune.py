@@ -34,6 +34,7 @@ from app.services.saju_enrichment import (
     estimate_yongsin_kisin,
     is_cheoneul_day,
     is_dohwa_day,
+    korean_call_name,
     place_for,
     stem_element,
     time_band_for,
@@ -219,10 +220,11 @@ def compute_today_fortune(user: User) -> Optional[TodayFortune]:
 
     score = max(1, min(5, base_score))
 
-    # 닉네임
-    nickname = (user.nickname or "").strip() or "OOO"
+    # 닉네임 — 성 빼고 받침 따라 야/아 붙임 (예: "박양희" → "양희야")
+    raw_nickname = (user.nickname or "").strip() or "친구"
+    call_name = korean_call_name(raw_nickname)
 
-    # seed 기반 템플릿 선택
+    # seed 기반 결정론적 선택
     seed = today_kst.toordinal() ^ ((user.id or 0) * 2654435761) & 0xFFFFFFFF
 
     headline_pool = _HEADLINE_BY_RELATION.get(
@@ -240,28 +242,30 @@ def compute_today_fortune(user: User) -> Optional[TodayFortune]:
     }
     yongsin, _kisin = estimate_yongsin_kisin(counts)
     today_el = stem_element(today_stem)
-    target_el = yongsin or today_el  # 추천 대상 오행
+    target_el = yongsin or today_el
 
     timing = time_band_for(target_el) if target_el else "오후"
     place = place_for(target_el) if target_el else "조용한 카페"
     lucky_color = color_for(target_el) if target_el else "흰색"
 
-    # caution 문구 종합 (없으면 일반)
+    # caution 문구
     if cautions:
         caution_text = " · ".join(cautions)
+    elif relation in ("편관", "겁재"):
+        caution_text = "강하게 밀어붙이지 말고 적당한 거리감을 유지해봐"
+    elif relation == "상관":
+        caution_text = "솔직함은 좋은데 너무 직설적이지는 말고"
     else:
-        if relation in ("편관", "겁재"):
-            caution_text = "강하게 밀어붙이지는 말고 적당한 거리감 유지해"
-        elif relation in ("상관",):
-            caution_text = "솔직함은 좋은데 너무 직설적이지는 않게"
-        else:
-            caution_text = "평소대로 자연스럽게 행동하면 충분해"
+        caution_text = "평소대로 자연스럽게 행동하면 충분해"
 
-    # 메인 fortune_text — 헤드라인을 닉네임 포함해 자연스럽게
+    # ★ 메인 fortune_text — 3줄 자연스러운 글로 정보 녹임.
+    # Line 1: 헤드라인 (오늘의 운세 톤)
+    # Line 2: 만남 묘사 — person_type + place + timing 자연스럽게
+    # Line 3: 색상 포인트 + 주의 한마디
     fortune_text = (
-        f'"{nickname}아, {headline}.\n오늘은 {person_type}을 만나기 좋은 날이야."'
-        if not nickname.endswith(("님",))
-        else f'"{nickname}, {headline}.\n오늘은 {person_type}을 만나기 좋은 날이야."'
+        f'"{call_name}, {headline}.\n'
+        f"{timing}쯤 {place}에서 {person_type}과의 만남이 잘 풀려.\n"
+        f'{lucky_color} 포인트로 살짝 멋 부리고 가봐 — {caution_text}."'
     )
 
     today_element_en = stem_element(today_stem)

@@ -122,18 +122,14 @@ class TodayFortuneResponse(BaseModel):
     badges: list[str] = []
 
 
-class ActionGuideTip(BaseModel):
-    """행동 가이드 한 항목 — 라벨 + 본문 한 줄."""
-
-    label: str   # "오늘의 컬러"
-    value: str   # "초록 — 액세서리 한 포인트로 살짝"
-
-
 class ActionGuideResponse(BaseModel):
-    """오늘의 행동 가이드 — 사주 기반 동적 추천 (반말 톤)."""
+    """오늘의 행동 가이드 — 사주 기반 3줄 산문 (반말 톤).
 
-    headline: str  # 한 줄 인삿말 (반말)
-    tips: list[ActionGuideTip]
+    옷차림 / 태도 / 마음가짐 세 가지 관점이 자연스럽게 녹아있는
+    3줄 글. 클라이언트는 text 만 그대로 표시.
+    """
+
+    text: str
 
 
 class JamidusuPalace(BaseModel):

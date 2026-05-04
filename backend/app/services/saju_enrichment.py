@@ -290,3 +290,77 @@ def stem_element(stem: Stem) -> Optional[Element]:
     if info is None:
         return None
     return info.get("element")  # type: ignore[return-value]
+
+
+# --- 한국식 호칭 (성 떼고 받침 따라 야/아) -------------------------------
+
+# 자주 쓰이는 한국 성씨. 가장 흔한 60여 개.
+_ONE_CHAR_SURNAMES: set[str] = {
+    "김", "이", "박", "최", "정", "강", "조", "윤", "장", "임",
+    "한", "오", "서", "신", "권", "황", "안", "송", "류", "전",
+    "홍", "고", "문", "양", "손", "배", "백", "허", "유", "남",
+    "심", "노", "하", "곽", "성", "차", "주", "우", "구", "원",
+    "민", "나", "진", "지", "엄", "변", "채", "추", "도", "소",
+    "석", "선", "설", "마", "길", "연", "위", "표", "명", "기",
+    "반", "왕", "방", "옥", "육", "인", "맹", "제", "탁", "모",
+}
+_TWO_CHAR_SURNAMES: set[str] = {
+    "남궁", "황보", "제갈", "사공", "선우", "서문", "독고", "동방",
+}
+
+
+def _has_jongseong(ch: str) -> bool:
+    """한글 한 글자의 받침 유무. 한글 아니면 False."""
+    if not ch:
+        return False
+    code = ord(ch) - 0xAC00
+    if not (0 <= code < 11172):
+        return False
+    return (code % 28) != 0
+
+
+def korean_call_name(nickname: str) -> str:
+    """닉네임에서 성을 떼고 받침 따라 호칭 어미("야" / "아") 붙임.
+
+    예:
+        "박양희" → "양희야"   (희 = 받침 없음)
+        "김민수" → "민수야"   (수 = 받침 없음)
+        "이지은" → "지은아"   (은 = 받침 있음)
+        "황보석" → "석아"      (황보 = 2글자 성)
+        "양희"   → "양희야"   (이미 2글자라 성 떼지 않음)
+        ""       → ""
+    """
+    if not nickname:
+        return ""
+    name = nickname.strip()
+    if not name:
+        return ""
+
+    # 3글자 이상이면 성 떼기 시도 (2글자 성 우선)
+    if len(name) >= 3:
+        if name[:2] in _TWO_CHAR_SURNAMES:
+            name = name[2:]
+        elif name[:1] in _ONE_CHAR_SURNAMES:
+            name = name[1:]
+
+    if not name:
+        return ""
+
+    suffix = "아" if _has_jongseong(name[-1]) else "야"
+    return name + suffix
+
+
+def korean_call_name_topic(nickname: str) -> str:
+    """주격 호칭 — "양희는" / "지은이는" 같은 식.
+
+    호칭 어미 없이 이름 자체만 반환 (성 제거된 형태).
+    """
+    if not nickname:
+        return ""
+    name = nickname.strip()
+    if len(name) >= 3:
+        if name[:2] in _TWO_CHAR_SURNAMES:
+            name = name[2:]
+        elif name[:1] in _ONE_CHAR_SURNAMES:
+            name = name[1:]
+    return name

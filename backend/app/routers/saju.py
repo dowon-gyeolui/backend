@@ -6,7 +6,6 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.saju import (
     ActionGuideResponse,
-    ActionGuideTip,
     DetailedSajuResponse,
     JamidusuResponse,
     SajuResponse,
@@ -104,10 +103,7 @@ async def get_my_action_guide(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="행동 가이드를 만들지 못했어요. 사주 정보를 확인해줘.",
         )
-    return ActionGuideResponse(
-        headline=guide["headline"],
-        tips=[ActionGuideTip(**t) for t in guide["tips"]],
-    )
+    return ActionGuideResponse(text=guide["text"])
 
 
 @router.get("/me/jamidusu", response_model=JamidusuResponse)
