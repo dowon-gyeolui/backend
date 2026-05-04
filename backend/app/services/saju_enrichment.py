@@ -319,48 +319,48 @@ def _has_jongseong(ch: str) -> bool:
     return (code % 28) != 0
 
 
+def _strip_surname(name: str) -> str:
+    """3글자 이상 이름에서 한국 성씨를 제거. (2글자 성 우선)"""
+    if len(name) >= 3:
+        if name[:2] in _TWO_CHAR_SURNAMES:
+            return name[2:]
+        if name[:1] in _ONE_CHAR_SURNAMES:
+            return name[1:]
+    return name
+
+
 def korean_call_name(nickname: str) -> str:
-    """닉네임에서 성을 떼고 받침 따라 호칭 어미("야" / "아") 붙임.
+    """닉네임에서 성을 떼고 받침 따라 호칭 어미("야" / "아") 붙임 (반말).
 
     예:
-        "박양희" → "양희야"   (희 = 받침 없음)
-        "김민수" → "민수야"   (수 = 받침 없음)
-        "이지은" → "지은아"   (은 = 받침 있음)
-        "황보석" → "석아"      (황보 = 2글자 성)
-        "양희"   → "양희야"   (이미 2글자라 성 떼지 않음)
-        ""       → ""
+        "박양희" → "양희야", "이지은" → "지은아", "황보석" → "석아"
     """
     if not nickname:
         return ""
-    name = nickname.strip()
+    name = _strip_surname(nickname.strip())
     if not name:
         return ""
-
-    # 3글자 이상이면 성 떼기 시도 (2글자 성 우선)
-    if len(name) >= 3:
-        if name[:2] in _TWO_CHAR_SURNAMES:
-            name = name[2:]
-        elif name[:1] in _ONE_CHAR_SURNAMES:
-            name = name[1:]
-
-    if not name:
-        return ""
-
     suffix = "아" if _has_jongseong(name[-1]) else "야"
     return name + suffix
 
 
-def korean_call_name_topic(nickname: str) -> str:
-    """주격 호칭 — "양희는" / "지은이는" 같은 식.
+def korean_polite_name(nickname: str) -> str:
+    """존대용 호칭 — 성을 떼고 "~님" 붙임.
 
-    호칭 어미 없이 이름 자체만 반환 (성 제거된 형태).
+    예:
+        "박양희" → "양희님", "김민수" → "민수님", "황보석" → "석님",
+        "양희"   → "양희님" (이미 2글자라 성 안 뗌)
     """
     if not nickname:
         return ""
-    name = nickname.strip()
-    if len(name) >= 3:
-        if name[:2] in _TWO_CHAR_SURNAMES:
-            name = name[2:]
-        elif name[:1] in _ONE_CHAR_SURNAMES:
-            name = name[1:]
-    return name
+    name = _strip_surname(nickname.strip())
+    if not name:
+        return ""
+    return name + "님"
+
+
+def korean_call_name_topic(nickname: str) -> str:
+    """주격용 — 호칭 어미 없이 이름 자체만 (성 제거된 형태)."""
+    if not nickname:
+        return ""
+    return _strip_surname(nickname.strip())
