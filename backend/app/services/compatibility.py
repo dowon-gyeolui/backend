@@ -563,18 +563,20 @@ def build_destiny_analysis(user_a: User, user_b: User) -> DestinyAnalysis:
 
 # --- Daily 4-slot match assignment ----------------------------------------
 #
-# Cycle = 96 hours, anchored to the most recent **정오 12:00 KST** so all
+# Cycle = 96 hours, anchored to the most recent **자정 00:00 KST** so all
 # users in the same cycle window share the same `assigned_at` (deterministic,
-# fair, and easy to reason about — "오늘 정오 카드"). A "pack" is the set of
+# fair, and easy to reason about — "오늘 자정 카드"). A "pack" is the set of
 # 4 DailyMatch rows sharing one `assigned_at`. Slot policy:
 #
-#   slot 0 → 사주 무료. Unlocked at assigned_at (= 사이클 시작 정오 12:00).
+#   slot 0 → 사주 무료. Unlocked at assigned_at (= 사이클 시작 자정 00:00).
 #   slot 1 → 자미두수 유료. Unlocked at assigned_at, photo blinded if !paid.
-#   slot 2 → 사주 무료. Unlocked at assigned_at + 72h (= 3일 후 정오 12:00).
+#   slot 2 → 사주 무료. Unlocked at assigned_at + 72h (= 3일 후 자정 00:00).
 #   slot 3 → 자미두수 유료. Unlocked at assigned_at + 72h, blinded if !paid.
 #
-# 사용자 로그인 시간이 아니라 정오 기준이라, 하루 동안 여러 번 로그인해도
+# 사용자 로그인 시간이 아니라 자정 기준이라, 하루 동안 여러 번 로그인해도
 # 같은 카운트다운(타이머)을 보고, 다른 사용자도 같은 시각에 unlock 됨.
+# 예: 5/1 11:30 또는 15:30 접속 → assigned_at = 5/1 00:00 KST →
+#     slot 2/3 unlock at 5/4 00:00 KST (3일 후 자정).
 #
 # A new pack is generated on the first /compatibility/today call once the
 # previous pack's assigned_at + 96h has passed (= 잠금 해제 후 24시간 동안
@@ -597,37 +599,35 @@ PAID_SLOTS = {1, 3}
 LOCKED_INITIALLY_SLOTS = {2, 3}
 
 
-def _snap_to_noon_kst(dt: datetime) -> datetime:
-    """주어진 UTC 시각을 KST 정오(12:00)로 round-down 해서 UTC 로 반환.
+def _snap_to_midnight_kst(dt: datetime) -> datetime:
+    """주어진 UTC 시각을 KST 자정(00:00)으로 round-down 해서 UTC 로 반환.
 
-    예: KST 2026-04-30 14:32 → KST 2026-04-30 12:00 → UTC 03:00
-        KST 2026-04-30 09:15 → KST 2026-04-29 12:00 → UTC 04-29 03:00
+    예: KST 2026-05-01 11:30 → KST 2026-05-01 00:00 → UTC 04-30 15:00
+        KST 2026-05-01 15:30 → KST 2026-05-01 00:00 → UTC 04-30 15:00
     """
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     kst_dt = dt.astimezone(_KST)
-    noon_kst = kst_dt.replace(hour=12, minute=0, second=0, microsecond=0)
-    if noon_kst > kst_dt:
-        noon_kst -= timedelta(days=1)
-    return noon_kst.astimezone(timezone.utc)
+    midnight_kst = kst_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    return midnight_kst.astimezone(timezone.utc)
 
 
 def _current_cycle_anchor() -> datetime:
-    """현재 시점의 cycle anchor — 가장 최근 KST 정오."""
-    return _snap_to_noon_kst(datetime.now(timezone.utc))
+    """현재 시점의 cycle anchor — 오늘 KST 자정."""
+    return _snap_to_midnight_kst(datetime.now(timezone.utc))
 
 
 def _slot_unlock_at(assigned_at: datetime, slot_index: int) -> datetime:
-    """Compute slot unlock time anchored to noon, not raw assigned_at.
+    """Compute slot unlock time anchored to midnight, not raw assigned_at.
 
-    DB 에는 옛 코드 시절 (사용자 로그인 시각) 으로 저장된 row 가 그대로
-    살아있을 수 있어, 단순히 `assigned_at + LOCK_HOURS` 로 계산하면
-    잠금 해제 시각이 noon 이 아닌 임의 시각이 됨. 이 함수는 stored
-    assigned_at 을 항상 가장 최근 noon 으로 snap 한 뒤 LOCK_HOURS 를
-    더하므로, 옛 row 도 새 row 도 모두 KST 정오 단위로 정렬된 unlock
+    DB 에는 옛 코드 시절 (사용자 로그인 시각 / 정오 snap) 으로 저장된
+    row 가 그대로 살아있을 수 있어, 단순히 `assigned_at + LOCK_HOURS` 로
+    계산하면 잠금 해제 시각이 자정이 아닌 임의 시각이 됨. 이 함수는
+    stored assigned_at 을 항상 KST 자정으로 snap 한 뒤 LOCK_HOURS 를
+    더하므로, 옛 row 도 새 row 도 모두 KST 자정 단위로 정렬된 unlock
     시각을 갖게 된다.
     """
-    anchor = _snap_to_noon_kst(assigned_at)
+    anchor = _snap_to_midnight_kst(assigned_at)
     if slot_index in LOCKED_INITIALLY_SLOTS:
         return anchor + timedelta(hours=LOCK_HOURS)
     return anchor
@@ -744,11 +744,12 @@ async def _create_new_pack(
     )
     top = scored[:SLOT_COUNT]
 
-    # Snap assigned_at to the most recent KST 자정 so all 4 rows share a
+    # Snap assigned_at to today's KST 자정 (00:00) so all 4 rows share a
     # deterministic, all-users-aligned cycle key. Two users who first hit
     # /today within the same calendar day (KST) will see exactly the
     # same countdown timer, and slot 2/3 unlocks at the same wall-clock
-    # moment for everyone — easier to reason about than per-user windows.
+    # moment (D+3 자정) for everyone — easier to reason about than per-user
+    # windows.
     cycle_anchor = _current_cycle_anchor()
     rows: list[DailyMatch] = []
     for slot_index in range(SLOT_COUNT):
@@ -785,11 +786,11 @@ async def get_or_assign_today_pack(
     if not rows:
         needs_new = True
     else:
-        # 사이클 만료 판단도 noon-snap 기준으로. DB 의 raw assigned_at
-        # 이 옛 코드로 인해 noon 이 아닐 수 있어, 그대로 쓰면 만료
-        # 시각이 임의 시각이 되어 새 사이클이 noon 이 아닌 시각에
-        # 시작될 수 있음. snap 으로 일관된 noon 정렬 보장.
-        anchor = _snap_to_noon_kst(rows[0].assigned_at)
+        # 사이클 만료 판단도 midnight-snap 기준으로. DB 의 raw assigned_at
+        # 이 옛 코드(noon snap or 로그인 시각)로 인해 자정이 아닐 수 있어,
+        # 그대로 쓰면 만료 시각이 임의 시각이 되어 새 사이클이 자정이 아닌
+        # 시각에 시작될 수 있음. snap 으로 일관된 자정 정렬 보장.
+        anchor = _snap_to_midnight_kst(rows[0].assigned_at)
         age = datetime.now(timezone.utc) - anchor
         if age >= timedelta(hours=CYCLE_HOURS):
             needs_new = True
@@ -815,10 +816,10 @@ async def _materialize_pack(
         )
 
     now = datetime.now(timezone.utc)
-    # 클라이언트가 표시할 anchor + next_cycle 도 noon 기준으로 일관되게.
-    # stored assigned_at 이 옛 row 라 noon 이 아니면 snap 해서 보정.
+    # 클라이언트가 표시할 anchor + next_cycle 도 midnight 기준으로 일관되게.
+    # stored assigned_at 이 옛 row 라 midnight 이 아니면 snap 해서 보정.
     raw_assigned_at = rows[0].assigned_at
-    assigned_at = _snap_to_noon_kst(raw_assigned_at)
+    assigned_at = _snap_to_midnight_kst(raw_assigned_at)
     next_cycle_at = assigned_at + timedelta(hours=CYCLE_HOURS)
 
     slots: list[DailyMatchSlot] = []

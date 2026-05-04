@@ -153,7 +153,7 @@ created_at
 ### `daily_matches`
 ```
 id, user_id, candidate_id, slot_index (0-3), assigned_at
-# 한 묶음(=cycle)은 같은 assigned_at 공유 — KST 정오 12:00 anchor
+# 한 묶음(=cycle)은 같은 assigned_at 공유 — KST 자정 00:00 anchor
 ```
 
 ### `user_strikes`
@@ -263,7 +263,7 @@ knowledge_chunks:  id, source_title, source_author, topic, chapter
 
 ### 💕 5. 4-슬롯 매칭
 
-**🕛 KST 정오 12:00 anchor** — 모든 사용자가 같은 사이클 시각 공유
+**🕛 KST 자정 00:00 anchor** — 모든 사용자가 같은 사이클 시각 공유 (하루 중 어떤 시각에 접속해도 슬롯 unlock 시각은 D+3 자정으로 고정)
 
 ```
 한 cycle = 96시간 (4일)
