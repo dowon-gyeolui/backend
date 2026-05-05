@@ -28,8 +28,10 @@ from app.schemas.saju import SajuResponse
 _MODEL = os.environ.get("OPENAI_INTERPRET_MODEL", "gpt-4o-mini")
 _MAX_OUTPUT_TOKENS = 400
 
-# Deep model — 사주+자미두수 융합 풀이 전용. 토큰량 크니 gpt-4o.
-_MODEL_DEEP = os.environ.get("OPENAI_INTERPRET_MODEL_DEEP", "gpt-4o")
+# Deep model — 사주+자미두수 융합 풀이 전용. gpt-4.1 이 긴 JSON +
+# instruction-following 에 더 정확하면서 비용은 gpt-4o 와 비슷해 default
+# 로 채택. 환경변수로 override 가능 (예: gpt-4o, gpt-4.5, o3-mini 등).
+_MODEL_DEEP = os.environ.get("OPENAI_INTERPRET_MODEL_DEEP", "gpt-4.1")
 # 깊이·연결성 강화로 출력이 길어짐 — 12궁×4문장 + 4섹션×4문장 + summary 5문장 ≈ 4000+ 토큰.
 _MAX_OUTPUT_TOKENS_DEEP = 4500
 
