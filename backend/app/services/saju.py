@@ -407,3 +407,191 @@ def build_jamidusu_for(user: User) -> "JamidusuResponse":
     if result.overview or result.palaces or result.main_stars_summary:
         result.interpretation_status = "ready"
     return result
+
+
+# ─── 자미두수 Deep — 결정론 차트 + 사주 + RAG 융합 ──────────────────
+
+
+def _chart_to_dict(chart: "JamidusuChart") -> dict:
+    """JamidusuChart dataclass → dict (LLM 프롬프트에 직렬화하기 위함)."""
+    return {
+        "lunar_year": chart.lunar_year,
+        "lunar_month": chart.lunar_month,
+        "lunar_day": chart.lunar_day,
+        "is_leap_month": chart.is_leap_month,
+        "hour_assumed": chart.hour_assumed,
+        "year_pillar": chart.year_pillar,
+        "bureau_name": chart.bureau_name,
+        "bureau_num": chart.bureau_num,
+        "ming_branch_idx": chart.ming_branch_idx,
+        "ziwei_branch_idx": chart.ziwei_branch_idx,
+        "palaces": [
+            {
+                "name": p.name,
+                "name_ko": p.name_ko,
+                "branch": p.branch,
+                "branch_ko": p.branch_ko,
+                "stem": p.stem,
+                "stem_ko": p.stem_ko,
+                "stars": [
+                    {
+                        "name": s.name,
+                        "name_ko": s.name_ko,
+                        "type": s.type,
+                        "sub": s.sub,
+                    }
+                    for s in p.stars
+                ],
+            }
+            for p in chart.palaces
+        ],
+    }
+
+
+def _build_jamidusu_retrieval_queries(saju: SajuResponse) -> list[str]:
+    """자미두수전서 + 궁통보감 모두 노릴 검색어 — 일주/일간/오행 키워드."""
+    day_pillar = saju.pillars[2]
+    queries = [
+        f"{day_pillar.combined} 일주 자미두수",
+        f"{day_pillar.stem} 일간 명궁",
+        "자미 천부 명궁 부처궁",
+        f"{day_pillar.combined} 일주 성격",
+    ]
+    return queries
+
+
+async def build_jamidusu_deep_for(
+    user: "User",
+    db: "AsyncSession",
+):
+    """결정론 차트 + RAG passages + LLM → 사주+자미두수 융합 풀이.
+
+    Pipeline:
+      1. compute_chart() — 12궁×별 deterministic
+      2. retrieve(...) — 자미두수전서 / 궁통보감 RAG
+      3. generate_jamidusu_deep() — gpt-4o 단일 콜
+      4. 응답 매핑 — JamidusuDeepResponse
+    """
+    from app.schemas.knowledge import KnowledgeQuery
+    from app.schemas.saju import (
+        JamidusuDeepPalace,
+        JamidusuDeepResponse,
+        JamidusuDeepSections,
+        JamidusuDeepStar,
+    )
+    from app.services.jamidusu import compute_chart
+    from app.services.knowledge.retrieval import retrieve
+    from app.services.llm.interpret import (
+        RetrievedPassage,
+        generate_jamidusu_deep,
+    )
+
+    if user.birth_date is None:
+        return JamidusuDeepResponse(user_id=user.id, interpretation_status="pending")
+
+    # 1. 차트 계산
+    try:
+        chart = compute_chart(
+            user.birth_date,
+            birth_time=user.birth_time,
+            calendar_type=user.calendar_type or "solar",
+            is_leap_month=bool(user.is_leap_month),
+            gender=user.gender,
+        )
+    except Exception:
+        return JamidusuDeepResponse(user_id=user.id, interpretation_status="pending")
+
+    chart_dict = _chart_to_dict(chart)
+
+    # 2. 사주 (검색 쿼리 생성용)
+    saju = calculate(user)
+
+    # 3. RAG 검색
+    queries = _build_jamidusu_retrieval_queries(saju)
+    passages_by_citation: dict[str, RetrievedPassage] = {}
+    citations: list[str] = []
+    for q in queries:
+        try:
+            results = await retrieve(KnowledgeQuery(query=q, top_k=3), db)
+        except Exception:
+            continue
+        for r in results:
+            if r.match_reason != "vector_similarity" or r.chunk.id == 0:
+                continue
+            citations.append(r.source_citation)
+            if r.source_citation not in passages_by_citation:
+                passages_by_citation[r.source_citation] = RetrievedPassage(
+                    citation=r.source_citation,
+                    content=r.chunk.content or "",
+                )
+
+    seen: set[str] = set()
+    unique_citations: list[str] = []
+    for c in citations:
+        if c not in seen:
+            seen.add(c)
+            unique_citations.append(c)
+    ordered_passages = [passages_by_citation[c] for c in unique_citations]
+
+    # 4. 항상 차트는 응답에 포함 (LLM 실패해도 12궁×별 보임)
+    palaces_response = [
+        JamidusuDeepPalace(
+            name=p.name,
+            name_ko=p.name_ko,
+            branch=p.branch,
+            branch_ko=p.branch_ko,
+            stem=p.stem,
+            stem_ko=p.stem_ko,
+            stars=[
+                JamidusuDeepStar(
+                    name=s.name, name_ko=s.name_ko, type=s.type, sub=s.sub
+                )
+                for s in p.stars
+            ],
+            description="",  # LLM 결과 채울 자리
+        )
+        for p in chart.palaces
+    ]
+
+    response = JamidusuDeepResponse(
+        user_id=user.id,
+        interpretation_status="pending",
+        bureau_name=chart.bureau_name,
+        year_pillar=chart.year_pillar,
+        lunar_birth=(
+            f"{chart.lunar_year}-{chart.lunar_month:02d}-{chart.lunar_day:02d}"
+            + (" (윤달)" if chart.is_leap_month else "")
+        ),
+        hour_assumed=chart.hour_assumed,
+        palaces=palaces_response,
+        sources=unique_citations,
+    )
+
+    # 5. LLM 호출
+    llm_result = generate_jamidusu_deep(saju, chart_dict, ordered_passages)
+    if llm_result is None:
+        # LLM 실패. 차트는 보여주되 풀이만 비어있음.
+        response.interpretation_status = "partial"
+        return response
+
+    # 6. LLM 결과 매핑
+    response.headline = llm_result.get("headline", "")
+    response.overview = llm_result.get("overview", "")
+    sections = llm_result.get("sections") or {}
+    response.sections = JamidusuDeepSections(
+        personality=sections.get("personality", ""),
+        love=sections.get("love", ""),
+        wealth=sections.get("wealth", ""),
+        advice=sections.get("advice", ""),
+    )
+
+    # 12궁 풀이 — name_ko 매칭으로 description 채움
+    desc_by_ko: dict[str, str] = {
+        p["name_ko"]: p["description"] for p in (llm_result.get("palaces") or [])
+    }
+    for p in response.palaces:
+        p.description = desc_by_ko.get(p.name_ko, "")
+
+    response.main_stars_summary = llm_result.get("main_stars_summary", "")
+    response.interpretation_status = "ready"
+    return response

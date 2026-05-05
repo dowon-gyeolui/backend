@@ -7,6 +7,7 @@ from app.models.user import User
 from app.schemas.saju import (
     ActionGuideResponse,
     DetailedSajuResponse,
+    JamidusuDeepResponse,
     JamidusuResponse,
     SajuResponse,
     TodayFortuneResponse,
@@ -118,3 +119,23 @@ async def get_my_jamidusu(
     """
     _require_birth_date(current_user)
     return saju_service.build_jamidusu_for(current_user)
+
+
+@router.get("/me/jamidusu-deep", response_model=JamidusuDeepResponse)
+async def get_my_jamidusu_deep(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """사주 + **결정론 자미두수 차트** + RAG 기반 융합 풀이.
+
+    표준 안성술(安星術) 6단계 + 부성·사화 로 12궁×별을 결정론적으로
+    계산한 뒤, gpt-4o 가 사주 일간 영향과 자미두수 별 성향을 교차해
+    풀이. 응답 시간 ~10초, gpt-4o 콜이라 비용도 큼 → 프리미엄 게이팅
+    + 캐시 필수.
+
+    실패 시 interpretation_status='partial' 로 차트만 반환 (별 배치는
+    결정론이라 항상 표시됨). 시간 모르는 사용자는 子時 가정 +
+    hour_assumed=true 로 표시.
+    """
+    _require_birth_date(current_user)
+    return await saju_service.build_jamidusu_deep_for(current_user, db)

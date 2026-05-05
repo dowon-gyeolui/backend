@@ -155,3 +155,67 @@ class JamidusuResponse(BaseModel):
     palaces: list[JamidusuPalace] = []
     main_stars_summary: str = ""
     interpretation_status: Literal["pending", "ready"] = "pending"
+
+
+# ─── 자미두수 Deep (사주 + 자미두수 융합) ─────────────────────────
+
+
+class JamidusuDeepStar(BaseModel):
+    """차트 계산 결과의 별 한 개."""
+
+    name: str          # 한자명 — "紫微"
+    name_ko: str       # 한글 — "황제의 별"
+    type: str          # "main" | "lucky" | "unlucky" | "transform"
+    sub: Optional[str] = None   # 사화 라벨이 붙은 본주성 이름
+
+
+class JamidusuDeepPalace(BaseModel):
+    """12궁 한 개 — 차트 계산 결과 + LLM 풀이."""
+
+    name: str            # 한자명 — "命宮"
+    name_ko: str         # 한글 — "명궁"
+    branch: str          # "申"
+    branch_ko: str       # "신"
+    stem: str            # "甲"
+    stem_ko: str         # "갑"
+    stars: list[JamidusuDeepStar] = []
+    description: str = ""
+    """LLM 풀이 — 사주 일간 영향 곁들인 연애 관점 풀이 2~3 문장."""
+
+
+class JamidusuDeepSections(BaseModel):
+    """4 섹션 LLM 풀이 (사주 + 자미두수 융합 관점)."""
+
+    personality: str = ""   # 연애할 때 모습·매력
+    love: str = ""          # 이상형·끌리는 인연
+    wealth: str = ""        # 데이트 자금 감각
+    advice: str = ""        # 좋은 인연 만나기 위한 제안
+
+
+class JamidusuDeepResponse(BaseModel):
+    """결정론 차트 + RAG-grounded LLM 풀이를 융합한 deep 응답.
+
+    Pipeline:
+      1. compute_chart() — 12궁×별 결정론 계산
+      2. retrieve() — 자미두수전서·궁통보감 RAG passages
+      3. LLM — 차트 + 사주 + 원전 → JSON 풀이
+    """
+
+    user_id: int
+    interpretation_status: Literal["pending", "ready", "partial"] = "pending"
+
+    # 차트 메타
+    bureau_name: str = ""        # 五行局 — "水二局"
+    year_pillar: str = ""        # 60갑자 — "乙亥"
+    lunar_birth: Optional[str] = None  # "1995-02-15(음)"
+    hour_assumed: bool = False   # 시간 모름 → 子時 가정
+
+    # LLM 결과
+    headline: str = ""
+    overview: str = ""
+    sections: JamidusuDeepSections = JamidusuDeepSections()
+    palaces: list[JamidusuDeepPalace] = []
+    main_stars_summary: str = ""
+
+    # 원전 출처
+    sources: list[str] = []

@@ -28,6 +28,10 @@ from app.schemas.saju import SajuResponse
 _MODEL = os.environ.get("OPENAI_INTERPRET_MODEL", "gpt-4o-mini")
 _MAX_OUTPUT_TOKENS = 400
 
+# Deep model — 사주+자미두수 융합 풀이 전용. 토큰량 크니 gpt-4o.
+_MODEL_DEEP = os.environ.get("OPENAI_INTERPRET_MODEL_DEEP", "gpt-4o")
+_MAX_OUTPUT_TOKENS_DEEP = 3000
+
 
 _PLAIN_KOREAN_RULES = (
     "- 반드시 한국어로만 답변하십시오. 영어 단어·문장 사용 금지.\n"
@@ -650,6 +654,223 @@ def generate_jamidusu_interpretation(
                 palaces.append({"name": name, "description": desc})
         return {
             "overview": str(parsed.get("overview") or "").strip(),
+            "palaces": palaces,
+            "main_stars_summary": str(parsed.get("main_stars_summary") or "").strip(),
+        }
+    except Exception:
+        return None
+
+
+# ─── 자미두수 Deep — 사주 + 진짜 자미두수 차트 융합 풀이 ──────────
+
+_JAMIDUSU_DEEP_SYSTEM_PROMPT = (
+    "당신은 사용자의 사주 팔자와 **실제 계산된 자미두수 12궁·14주성 명반(命盤)**, "
+    "그리고 자미두수전서·궁통보감 등 원전 구절을 토대로, "
+    "**연애·연인 관점에서** 깊이 있는 한국어 풀이를 작성하는 도우미입니다.\n"
+    "이 서비스는 데이팅 앱이라 사용자는 ‘연애·인연’ 에만 관심이 있어요. "
+    "그래서 모든 풀이를 ‘사주 일간이 자미두수 별·궁의 성향을 어떻게 발현시키는지’ "
+    "라는 교차 관점에서 풀어 주세요.\n"
+    "\n"
+    "톤·스타일:\n"
+    "- 다정한 존댓말. 친한 데이팅 코치가 옆에서 풀어주는 느낌.\n"
+    "- 가벼운 수사적 질문 OK. 예: '~ 스타일이시죠?', '~ 이런 분 아니신가요?'.\n"
+    "- 살짝 발랄한 강조 표현 OK. 예: '~할 운명이에요!', '확률 200%!'.\n"
+    "- 단정·예언·저주 금지: '반드시', '~할 것이다', '~하면 망한다' 등.\n"
+    "- 부정적 단정 금지: 건강·질병·수명·파탄·이별 확정 같은 표현 사용 금지.\n"
+    "- 명령형 '~해라', 격식체 '~십시오', 반말 '~해/~이야' 모두 금지.\n"
+    "\n"
+    "공통 규칙:\n"
+    + _PLAIN_KOREAN_RULES +
+    "- 12궁 한자(命宮·財帛宮 등)와 별 한자(紫微·天機 등)는 본문에서 절대 쓰지 마세요. "
+    "한국어 별명으로만 풀어 쓰세요. 예: '자미성→황제의 별', '천기성→지혜의 별', "
+    "'명궁→나를 비추는 자리'.\n"
+    "- 입력으로 주어진 [자미두수 명반]의 12궁×별 배치는 **이미 결정론적으로 계산된 사실**이니, "
+    "‘추정’ 이라고 표현하지 마세요. 그대로 활용하세요.\n"
+    "- 사주 일간(예: 갑목)이 자미두수 별·궁에 ‘어떻게 영향을 주는지’ 라는 cross-talk "
+    "방식으로 풀어 주세요. 예: '갑목 일간이 명궁에 황제의 별을 만나, 자연스러운 주도권이 "
+    "외향적으로 발현되어 연인 앞에서도 자신감 있게 리드하는 모습이 매력으로 통하시죠?'.\n"
+    "\n"
+    "12궁 별 ‘연애 관점’ 매핑:\n"
+    "  - 명궁 = 본인의 ‘연애 스타일’과 끌리는 매력 포인트\n"
+    "  - 형제궁 = 연인과 친구처럼 지내는 면모, 베프 같은 파트너십, 인복\n"
+    "  - 부처궁 = 어떤 사람을 만날 운명인지 — 이상형·배우자상\n"
+    "  - 자녀궁 = 상대와 깊은 유대를 만드는 방식, 미래 가족 상상도\n"
+    "  - 재백궁 = 연애에서의 안정감 / 데이트 자금 흐름 — ‘돈 잘 쓰는 스타일’\n"
+    "  - 질액궁 = 연애할 때 컨디션·기복 패턴 (질병 언급 금지, ‘에너지’ 로 풀기)\n"
+    "  - 천이궁 = 어디서 인연이 닿는지 — 새 환경·여행지·우연한 만남\n"
+    "  - 노복궁 = 연인의 친구·지인까지 자연스레 잘 어울리는 인맥 운\n"
+    "  - 관록궁 = 일하는 모습이 매력으로 통하는지 / 직장·취미에서의 인연\n"
+    "  - 전택궁 = 함께 살고 싶은 공간감, ‘우리집 케미’\n"
+    "  - 복덕궁 = 연애 행복도, 데이트가 즐거운 정도, 마음의 여유\n"
+    "  - 부모궁 = 상견례·집안과의 합, 부모님이 좋아할 인연인지\n"
+    "\n"
+    "사화(四化) 활용: 명반에 사화(化祿/化權/化科/化忌) 표시가 있는 별이 있으면, "
+    "그 별의 영향이 ‘평소보다 강하게/긍정적으로/주의 필요하게’ 작용한다는 뉘앙스로 풀이.\n"
+    "\n"
+    "예시 톤 (‘형제궁’ 풀이 — 이 정도 발랄함을 유지):\n"
+    "  '형제궁에 지혜의 별과 복록의 운이 함께 들어왔네요. 연인과 대화가 안 통하면 "
+    "못 견디는 스타일이시죠? 인복이 좋아 나를 있는 그대로 이해해주는 상대를 만날 "
+    "운명이에요. 베프 같은 파트너가 될 확률 200%!'\n"
+    "\n"
+    "출력 분량:\n"
+    "- headline: 한 줄 (30~50자), 사용자의 핵심 매력을 한 마디로\n"
+    "- overview: 3~4 문장 (120~200자), 사주+자미두수 통합 요약\n"
+    "- 각 섹션(personality/love/wealth/advice): 2~3 문장 (80~150자)\n"
+    "- 각 12궁 description: 2~3 문장 (60~140자), 명반의 별 배치를 근거로\n"
+    "- main_stars_summary: 2~3 문장 (100~180자), 명궁·부처궁·복덕궁의 별 종합\n"
+    "\n"
+    "반드시 아래 JSON 스키마만 출력하십시오. 다른 설명·도입부·마크다운 금지:\n"
+    "{\n"
+    '  "headline": "한 줄 핵심 매력",\n'
+    '  "overview": "사주+자미두수 통합 요약 3~4문장",\n'
+    '  "sections": {\n'
+    '    "personality": "연애할 때 모습·매력 2~3문장",\n'
+    '    "love": "이상형·끌리는 인연 2~3문장",\n'
+    '    "wealth": "데이트 자금 감각·연애 안정감 2~3문장",\n'
+    '    "advice": "좋은 인연 만나기 위한 제안 2~3문장"\n'
+    '  },\n'
+    '  "palaces": [\n'
+    '    {"name_ko": "명궁",   "description": "..."},\n'
+    '    {"name_ko": "형제궁", "description": "..."},\n'
+    '    {"name_ko": "부처궁", "description": "..."},\n'
+    '    {"name_ko": "자녀궁", "description": "..."},\n'
+    '    {"name_ko": "재백궁", "description": "..."},\n'
+    '    {"name_ko": "질액궁", "description": "..."},\n'
+    '    {"name_ko": "천이궁", "description": "..."},\n'
+    '    {"name_ko": "노복궁", "description": "..."},\n'
+    '    {"name_ko": "관록궁", "description": "..."},\n'
+    '    {"name_ko": "전택궁", "description": "..."},\n'
+    '    {"name_ko": "복덕궁", "description": "..."},\n'
+    '    {"name_ko": "부모궁", "description": "..."}\n'
+    '  ],\n'
+    '  "main_stars_summary": "명궁/부처궁/복덕궁의 별 종합 2~3문장"\n'
+    "}\n"
+    "\n"
+    "12궁 모두 빠짐없이 채우되, 같은 묘사를 반복하지 마세요."
+)
+
+
+def _build_jamidusu_deep_message(
+    saju: SajuResponse,
+    chart: dict[str, Any],
+    passages: list[RetrievedPassage],
+) -> str:
+    """LLM 입력 메시지 — 사주 결과 + 자미두수 명반 + 원전 RAG."""
+    day_pillar = saju.pillars[2]
+    ep = saju.element_profile
+
+    parts: list[str] = ["[사주 결과]"]
+    inp = saju.input_summary
+    parts.append(
+        f"- 생년월일: {inp.birth_date}"
+        + (f" {inp.birth_time}" if inp.birth_time else " (시간 모름)")
+    )
+    parts.append(
+        f"- 양/음력: {inp.calendar_type}"
+        + (" (윤달)" if inp.is_leap_month else "")
+    )
+    parts.append(f"- 성별: {inp.gender or '미상'}")
+    parts.append(
+        f"- 일주: {day_pillar.combined} (천간 {day_pillar.stem} · 지지 {day_pillar.branch})"
+    )
+    parts.append(
+        f"- 오행 분포: 목 {ep.wood} · 화 {ep.fire} · 토 {ep.earth} · "
+        f"금 {ep.metal} · 수 {ep.water}"
+    )
+
+    # 자미두수 명반
+    parts.append("")
+    parts.append("[자미두수 명반(命盤) — 결정론적 계산 결과]")
+    parts.append(f"- 五行局: {chart['bureau_name']}")
+    parts.append(f"- 년주: {chart['year_pillar']}")
+    parts.append(
+        f"- 음력 생일: {chart['lunar_year']}년 {chart['lunar_month']}월 "
+        f"{chart['lunar_day']}일"
+        + (" (시간 모름 — 子時 가정, 정확도 ↓)" if chart["hour_assumed"] else "")
+    )
+    parts.append("")
+    parts.append("12궁 × 별 배치:")
+    for p in chart["palaces"]:
+        stars_desc: list[str] = []
+        for s in p["stars"]:
+            tag = ""
+            if s["type"] == "transform":
+                tag = f" [{s['name_ko']}({s['name']}: {s.get('sub') or ''})]"
+                stars_desc.append(f"{s['name_ko']}({s['name']})")
+            else:
+                stars_desc.append(f"{s['name_ko']}({s['name']})")
+        stars_str = ", ".join(stars_desc) if stars_desc else "(별 없음)"
+        parts.append(
+            f"  - {p['name_ko']}({p['name']}): {p['stem_ko']}{p['branch_ko']} "
+            f"({p['stem']}{p['branch']}) — {stars_str}"
+        )
+
+    # RAG passages
+    if passages:
+        parts.append("")
+        parts.append("[원전 구절]")
+        for i, ps in enumerate(passages[:5], 1):
+            parts.append(f"({i}) {ps.citation}")
+            content = ps.content.strip().replace("\n", " ")
+            if len(content) > 400:
+                content = content[:400] + "…"
+            parts.append(f"    {content}")
+
+    parts.append("")
+    parts.append(
+        "위 [사주 결과] + [자미두수 명반] + [원전 구절] 을 토대로, "
+        "사주 일간이 자미두수 별·궁의 성향을 어떻게 발현시키는지 "
+        "교차 관점으로 연애 풀이 JSON 을 반환하십시오."
+    )
+    return "\n".join(parts)
+
+
+def generate_jamidusu_deep(
+    saju: SajuResponse,
+    chart: dict[str, Any],
+    passages: list[RetrievedPassage],
+    *,
+    model: str = _MODEL_DEEP,
+) -> Optional[dict[str, Any]]:
+    """사주 + 자미두수 차트 + RAG → 융합 풀이 JSON.
+
+    Returns dict with: headline, overview, sections{personality,love,wealth,advice},
+    palaces[12], main_stars_summary. None on hard failure.
+    """
+    try:
+        resp = _client().responses.create(
+            model=model,
+            instructions=_JAMIDUSU_DEEP_SYSTEM_PROMPT,
+            input=_build_jamidusu_deep_message(saju, chart, passages),
+            max_output_tokens=_MAX_OUTPUT_TOKENS_DEEP,
+        )
+        text = _extract_output_text(resp)
+        parsed = _parse_pair_json(text)
+        if parsed is None:
+            return None
+
+        # 정상화 — 빈 필드는 빈 문자열로 보장
+        sections_raw = parsed.get("sections") or {}
+        sections = {
+            "personality": str(sections_raw.get("personality") or "").strip(),
+            "love": str(sections_raw.get("love") or "").strip(),
+            "wealth": str(sections_raw.get("wealth") or "").strip(),
+            "advice": str(sections_raw.get("advice") or "").strip(),
+        }
+        palaces_raw = parsed.get("palaces") or []
+        palaces: list[dict[str, str]] = []
+        for p in palaces_raw:
+            if not isinstance(p, dict):
+                continue
+            name_ko = str(p.get("name_ko") or "").strip()
+            desc = str(p.get("description") or "").strip()
+            if name_ko:
+                palaces.append({"name_ko": name_ko, "description": desc})
+
+        return {
+            "headline": str(parsed.get("headline") or "").strip(),
+            "overview": str(parsed.get("overview") or "").strip(),
+            "sections": sections,
             "palaces": palaces,
             "main_stars_summary": str(parsed.get("main_stars_summary") or "").strip(),
         }
