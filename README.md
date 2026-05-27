@@ -336,49 +336,6 @@ init_db()
 - OAuth 2.0 로그인
 - `/v1/user/unlink` (탈퇴 시 동의 해제)
 
----
-
-## 🔑 환경변수
-
-```bash
-# Database
-DATABASE_URL=postgresql+asyncpg://user:pass@host/db  # 또는 SQLite (기본)
-
-# Kakao
-KAKAO_CLIENT_ID=...                  # REST API 키
-KAKAO_CLIENT_SECRET=...              # client secret (옵션)
-KAKAO_REDIRECT_URI=https://api.thezami.io/auth/kakao/callback
-KAKAO_ADMIN_KEY=...                  # 탈퇴 시 unlink 용 어드민 키
-
-# Auth
-SECRET_KEY=...                       # JWT 서명
-ACCESS_TOKEN_EXPIRE_MINUTES=10080    # 7일
-
-# CORS / OAuth redirect (콤마 구분, 첫 항목 = redirect 타겟)
-FRONTEND_URLS=https://thezami.io,https://www.thezami.io,http://localhost:3000
-
-# OpenAI
-OPENAI_API_KEY=sk-...
-OPENAI_INTERPRET_MODEL=gpt-4o-mini   # 옵션
-
-# Cloudinary
-CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name
-# 또는 분리:
-# CLOUDINARY_CLOUD_NAME=...
-# CLOUDINARY_API_KEY=...
-# CLOUDINARY_API_SECRET=...
-
-# AWS Rekognition (사진 모더레이션)
-AWS_ACCESS_KEY_ID=AKIA...
-AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=ap-northeast-2
-
-# Misc
-DEBUG=true                           # SQLAlchemy echo
-```
-
----
-
 ## 🚀 빌드 / 배포
 
 | 항목 | 값 |
