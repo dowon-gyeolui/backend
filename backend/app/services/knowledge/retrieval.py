@@ -1,21 +1,21 @@
-"""Knowledge retrieval — vector similarity first, keyword fallback.
+"""지식 검색 — 벡터 유사도 우선, 키워드 폴백.
 
-Decision tree per call:
-  1. Base filter (source_type / topic / language) → candidate set
-  2. If any candidate has a stored embedding:
-       - embed query text via OpenAI
-       - compute cosine similarity in Python
-       - return top_k, match_reason = "vector_similarity"
-  3. Else, keyword LIKE search on content / topic:
-       - return top_k, match_reason = "keyword_match"
-  4. Else placeholder result (keeps Swagger testable with empty DB).
+호출당 결정 트리:
+  1. 기본 필터(source_type / topic / language)로 후보 집합 구성.
+  2. 후보 중 임베딩 보유 청크가 하나라도 있으면:
+       - OpenAI 로 쿼리 임베딩 생성
+       - 파이썬에서 cosine similarity 계산
+       - top_k 반환, match_reason = "vector_similarity"
+  3. 그 외엔 content/topic 키워드 LIKE 검색:
+       - top_k 반환, match_reason = "keyword_match"
+  4. 그것도 없으면 placeholder 결과(Swagger 가 빈 DB 에서도 동작).
 
-Invariant:
-  Every result carries source_citation so callers attribute text to a book.
+불변:
+  모든 결과는 source_citation 을 포함해 호출자가 출처를 표시할 수 있다.
 
-Future upgrade (no call-site change):
-  Step 2 becomes `ORDER BY embedding <=> query_vec LIMIT top_k`
-  once pgvector is enabled in the DB.
+향후 업그레이드(호출부 변경 없이):
+  2단계가 `ORDER BY embedding <=> query_vec LIMIT top_k` 로 바뀜
+  (pgvector 도입 시).
 """
 
 from __future__ import annotations

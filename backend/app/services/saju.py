@@ -1,15 +1,18 @@
-"""Saju calculation service — placeholder implementation.
+"""사주 계산 서비스 — placeholder 구현(단순 모듈러).
 
-All pillar derivations use simple modular arithmetic on the birth date.
-They produce output that varies with input and follows the correct structure,
-but are NOT accurate traditional calculations.
+각 기둥(년/월/일/시)을 출생일에 대한 간단한 modular arithmetic 으로
+계산한다. 입력에 따라 결과가 변하고 구조도 정통 사주와 같지만
+실제로 정확한 정통 계산은 아니다.
 
-Replacement points are marked with TODO comments:
-  - _year_pillar:  TODO certified 60-cycle engine
-  - _month_pillar: TODO 절기 (solar term) based month pillar
-  - _day_pillar:   TODO exact day pillar lookup table
-  - _time_pillar:  TODO 五鼠遁日法 for correct time stem
-  - _element_profile: TODO include earthly branch elements (지지 오행)
+교체 지점은 TODO 주석으로 표시:
+  - _year_pillar:    정통 60갑자 엔진(saju_engine.py 사용)
+  - _month_pillar:   24절기 기반 월주
+  - _day_pillar:     정확한 일주 룩업
+  - _time_pillar:    五鼠遁日法 으로 시간(時) 천간
+  - _element_profile: 지지 오행까지 포함한 분포
+
+본격 구현은 services/saju_engine.py 에 있으며, 신규 호출은 그쪽을
+쓰도록 점진적으로 이전 중.
 """
 
 from datetime import date as DateType

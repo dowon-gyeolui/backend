@@ -1,3 +1,14 @@
+"""사주/자미두수 응답 스키마.
+
+- BirthInputSummary: 계산에 사용된 출생 입력 echo
+- Pillar: 4기둥 중 한 기둥(천간/지지 + 명식 보조 필드)
+- ElementProfile: 오행 분포(목/화/토/금/수 개수)
+- SajuResponse / DetailedSajuResponse: 사주 풀이 응답(짧은/심층)
+- TodayFortuneResponse: 오늘의 인연운 응답
+- ActionGuideResponse: 행동 가이드 3줄 응답
+- JamidusuResponse / JamidusuDeepResponse: 자미두수 차트와 심층 풀이
+"""
+
 from datetime import date
 from typing import Literal, Optional
 

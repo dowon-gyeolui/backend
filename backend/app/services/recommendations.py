@@ -1,23 +1,18 @@
-"""Recommendation service.
+"""추천 서비스.
 
-Two modes matching the product flow:
+두 가지 모드(제품 흐름과 1:1 대응):
 
-  1. Pre-match (free tier):
+  1. 사전 추천(무료):
        GET /recommendations/me
-       Rule-based color/place/styling tips derived from the user's saju
-       dominant element. No LLM, no RAG — deterministic and always available.
+       사용자 주도 오행에서 컬러/장소/스타일을 결정론적으로 매핑.
+       LLM/RAG 없이 항상 동작.
 
-  2. Post-match (paid tier):
+  2. 사후 추천(유료):
        GET /recommendations/pair/{target_user_id}
-       Pair-level tips for two users who already saw each other's card.
-       Uses compatibility score + element relationship to build retrieval
-       queries, pulls classical passages via vector search, then asks an LLM
-       to produce strengths / cautions / conversation_starters grounded in
-       those passages. Falls back gracefully when LLM is unavailable.
-
-The pre-match path is always safe. The post-match path degrades to empty
-lists + no summary when retrieval or the LLM fails — the caller still gets
-a valid response.
+       두 사용자의 궁합/오행 관계로 retrieval 쿼리를 구성해
+       원전 구절을 가져오고, LLM 이 강점/유의점/대화 주제를 인용
+       기반으로 작성. retrieval/LLM 실패 시에도 유효한 응답을
+       돌려주도록 안전 fallback.
 """
 
 from __future__ import annotations

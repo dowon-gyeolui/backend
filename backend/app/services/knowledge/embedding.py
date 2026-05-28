@@ -1,16 +1,14 @@
-"""Text embedding service — OpenAI text-embedding-3-small (1536 dims).
+"""텍스트 임베딩 서비스 — OpenAI text-embedding-3-small (1536 차원).
 
-Entrypoints:
-  embed_text(text)     → single vector (used by retrieval for queries)
-  embed_texts(texts)   → batch vectors (used by ingestion)
-  build_chunk_embedding_input(...) → standard formatter for a chunk's
-                         embedding input (original + korean + metadata)
+진입점:
+  embed_text(text)              — 단일 벡터(retrieval 쿼리에서 사용)
+  embed_texts(texts)            — 배치 벡터(ingestion 에서 사용)
+  build_chunk_embedding_input() — 청크 임베딩 입력 표준 포매터
+                                  (원문 + 한국어 + 메타데이터)
 
-Both ingestion and retrieval MUST go through build_chunk_embedding_input()
-or equivalent normalization so that query and chunk vectors live in the
-same semantic space.
-
-Requires OPENAI_API_KEY env var.
+ingestion 과 retrieval 은 반드시 동일한 포매터(또는 정규화)를 거쳐야
+쿼리 벡터와 청크 벡터가 같은 의미 공간에 살게 된다. OPENAI_API_KEY
+환경변수가 필요하다.
 """
 
 from __future__ import annotations

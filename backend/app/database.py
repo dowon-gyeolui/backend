@@ -1,3 +1,15 @@
+"""SQLAlchemy 비동기 엔진과 세션 팩토리, 그리고 개발용 컬럼 패치.
+
+- engine / AsyncSessionLocal: 모든 라우터·서비스가 공유하는 엔진/세션
+- Base: 모든 ORM 모델이 상속하는 declarative base
+- get_db(): FastAPI Depends 용 async generator
+- init_db(): 앱 기동 시 한 번 호출 — 테이블 생성 + dev 컬럼 패치
+
+_DEV_COLUMNS는 Alembic이 아직 없으므로 누락된 컬럼을 SQLite/PostgreSQL
+양쪽에서 안전하게 ALTER TABLE로 보강하는 임시 마이그레이션 테이블.
+정식 마이그레이션이 들어오면 이 블록은 제거 예정.
+"""
+
 from typing import AsyncGenerator
 
 from sqlalchemy import text

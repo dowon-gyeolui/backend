@@ -1,16 +1,16 @@
-"""Kakao OAuth 2.0 entrypoints.
+"""카카오 OAuth 2.0 진입점.
 
-Flow:
-    /auth/kakao             — 302 redirect to Kakao's authorize page
-    /auth/kakao/callback    — Kakao calls us back here with ?code=...; we
-                              exchange it for an access_token, fetch the
-                              user's profile, upsert a User row, sign a JWT,
-                              and 302 the browser back to the frontend with
-                              the token in the query string.
+플로우:
+  GET /auth/kakao           — 카카오 동의 페이지로 302 리다이렉트
+  GET /auth/kakao/callback  — 카카오가 code 파라미터로 콜백.
+                              code → access_token → 프로필 조회 →
+                              User upsert → JWT 발급 후 프론트로
+                              `${frontend_url}/auth/callback?token=...&is_new=...`
+                              로 302.
 
-The frontend redirect target is the value of ``settings.frontend_url`` plus
-``/auth/callback``. We pass the JWT in the URL fragment / query so the SPA
-can pick it up and store it in localStorage.
+is_new 플래그는 birth_date 가 NULL 인지로 판정해, 프론트가 신규
+사용자에게 온보딩 페이지를, 기존 사용자에게 홈을 즉시 보여줄 수
+있게 한다.
 """
 from fastapi import APIRouter, Depends
 from fastapi.responses import RedirectResponse

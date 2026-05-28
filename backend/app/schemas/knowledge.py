@@ -1,3 +1,10 @@
+"""원전 청크 적재/검색 입출력 스키마.
+
+- KnowledgeChunkCreate / KnowledgeChunkResponse: 단일 청크 입출력
+- KnowledgeIngestRequest / KnowledgeIngestResponse: 원문 일괄 적재
+- KnowledgeQuery / KnowledgeRetrievalResult: 검색 입력과 결과
+"""
+
 from datetime import datetime
 from typing import Literal, Optional
 

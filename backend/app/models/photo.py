@@ -1,10 +1,13 @@
-"""User photos — multiple-photo profile gallery.
+"""다중 사진 프로필 갤러리.
 
-Why a separate table: users.photo_url is the single "main" image used by
-match cards and chat headers, but the user can upload multiple photos and
-pick which one is primary. Storing extras in a child table keeps the hot
-path (match list) lightweight while still letting the gallery endpoint
-hydrate everything in one extra query.
+users.photo_url 은 매칭 카드/채팅 헤더에서 쓰는 단일 메인 사진이지만,
+사용자는 최대 6장까지 업로드하고 그중 하나를 메인으로 지정할 수 있다.
+나머지를 별도 테이블에 분리해 두면 hot path(매칭 목록)는 가벼운 상태로
+유지하면서 갤러리 엔드포인트에서만 한 번 더 조회해 펼치면 된다.
+
+is_face_verified 플래그는 AWS Rekognition strict 모더레이션
+(얼굴 1개 + 면적 25% 이상)을 통과한 사진에만 True 가 되며,
+이 플래그가 켜진 사진에만 ZAMI 공식 인증 뱃지가 노출된다.
 """
 
 from datetime import datetime, timezone

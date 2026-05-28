@@ -1,3 +1,9 @@
+"""추천 카드 스키마.
+
+- RecommendationCard: 사전 추천(무료, rule-based) — 색상/장소/스타일/요약
+- PairRecommendation: 사후 추천(유료, LLM+RAG) — 강점/유의점/대화 주제/원전 인용
+"""
+
 from typing import Optional
 
 from pydantic import BaseModel

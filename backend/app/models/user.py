@@ -1,3 +1,13 @@
+"""사용자 테이블.
+
+하나의 row 가 사주 입력값(생년월일/시간/양음력/성별/출생지),
+프로필 카드 정보(닉네임/사진/한 줄 소개/키/MBTI/직업 등),
+결제 상태(is_paid), 채팅 정지 쿨다운(chat_suspended_until)을 모두 담는다.
+
+카카오 OAuth 가입 시 kakao_id 만 채워진 빈 row 가 먼저 생성되고,
+온보딩 단계에서 생년월일/성별 등이 차례로 PATCH 된다.
+"""
+
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String

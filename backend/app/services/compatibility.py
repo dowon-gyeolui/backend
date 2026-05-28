@@ -1,18 +1,18 @@
-"""Compatibility scoring service — rule-based MVP implementation.
+"""궁합 점수 계산 서비스 — rule-based MVP 구현.
 
-Scoring model (placeholder, deterministic, 0..100):
-
+점수 모델(결정론적, 0~100, clamp):
   base                              = 50
-  day-stem element relationship     = +5 | +10 | -10 | 0
-  day-branch 三合 (trine harmony)   = +10
-  day-branch 六冲 (clash)           = -10
-  dominant-element productive cycle = +5
+  일간(日干) 오행 관계               = +5 | +10 | -10 | 0
+  일지(日支) 三合(삼합)              = +10
+  일지(日支) 六沖(육충)              = -10
+  주도 오행 상생 관계                = +5
 
-Ranges 0..100 are clamped. Accuracy is NOT critical for MVP per CLAUDE.md —
-the point is a stable signal that varies meaningfully with real input.
+CLAUDE.md 의 MVP 원칙대로 정확도보다 입력에 따라 의미 있게 변하는
+안정 시그널을 제공하는 것이 목표. 추후 RAG 기반 근거(인용 출처)
+부착이 TODO.
 
-TODO: attach retrieval-grounded sources (via services.knowledge.retrieval)
-to the `summary` once per-pair RAG cost is acceptable.
+동시에 매칭 카드 후보 선별, 운명의 실타래/데이트 추천 LLM 호출,
+4-슬롯 daily pack 생성 등 매칭 도메인의 상위 로직도 이 모듈에서 다룬다.
 """
 
 from __future__ import annotations

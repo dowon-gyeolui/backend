@@ -1,12 +1,8 @@
-"""Request dependencies shared across routers.
+"""라우터 공용 의존성 — 현재 로그인 사용자 조회.
 
-Auth: real Kakao OAuth issues a JWT in /auth/kakao/callback. Clients send it
-back as ``Authorization: Bearer <token>``; we decode the user_id from the
-``sub`` claim and look up the User row.
-
-Dev escape hatch: when ``settings.debug`` is on AND no Authorization header is
-present, fall back to the legacy ``X-Dev-User-Id`` header so existing scripts
-and Swagger flows keep working without going through Kakao.
+- Authorization: Bearer <JWT> 헤더를 파싱해 사용자 row 반환
+- debug 모드 + Authorization 헤더 없음 → X-Dev-User-Id 헤더로 폴백
+  (스크립트/Swagger에서 카카오 로그인 없이 작업할 수 있도록)
 """
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select

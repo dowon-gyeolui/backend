@@ -1,7 +1,7 @@
-"""JWT encoding/decoding utilities.
+"""JWT 토큰 발급/검증 유틸.
 
-The token's ``sub`` claim carries the internal user ID as a string —
-``get_current_user`` parses it back to ``int`` to look up the user.
+토큰의 sub 클레임에 내부 user_id를 문자열로 싣고,
+decode 시 int로 다시 파싱해 사용자 조회에 쓴다.
 """
 from datetime import datetime, timedelta, timezone
 

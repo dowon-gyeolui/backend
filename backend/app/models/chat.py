@@ -1,11 +1,13 @@
-"""Chat thread + message tables.
+"""채팅 스레드와 메시지 테이블.
 
-A ChatThread is a 1:1 conversation between two users. We canonicalise the
-(user_a_id, user_b_id) pair so user_a_id < user_b_id, which means the
-unique constraint guarantees there is exactly one thread per pair regardless
-of who initiated it.
+ChatThread는 두 사용자의 1:1 대화. (user_a_id, user_b_id) 쌍을
+user_a_id < user_b_id 순서로 정규화해 저장하므로 누가 먼저
+말을 걸었든 유니크 제약으로 쌍당 정확히 한 스레드만 존재한다.
 
-Message is append-only — no edit, no delete in the MVP.
+Message는 append-only — MVP에서는 편집/삭제 없음.
+
+last_read_id 와 left 플래그는 카카오톡 스타일 안 읽은 메시지 배지와
+소프트 leave(본인 화면에서만 사라짐)를 구현하기 위해 per-user로 관리.
 """
 
 from datetime import datetime, timezone

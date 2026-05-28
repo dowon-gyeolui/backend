@@ -1,10 +1,10 @@
 """사주 풀이 보조 룩업 — 도화살, 천을귀인, 충/합, 용신, 색상/방위 등.
 
-`saju_chart.py` 의 천간/지지/십성 lookup 을 보완하는 풀이 데이터.
-순수 데이터 + 결정론적 함수만 들어있어 단위 테스트가 쉽다.
+saju_chart.py 의 천간/지지/십성 lookup 을 보완하는 풀이 데이터.
+순수 데이터 + 결정론적 함수만 들어 있어 단위 테스트가 쉽다.
 
-이 모듈을 fortune.py / recommendations.py 에서 호출해 사용자별
-풍부한 풀이를 생성한다.
+fortune.py / action_guide.py / recommendations.py 에서 호출해 사용자별
+풍부한 풀이(인연운/행동가이드/추천)를 생성하는 데 사용한다.
 """
 
 from __future__ import annotations

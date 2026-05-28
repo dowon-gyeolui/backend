@@ -1,8 +1,9 @@
-"""User photo gallery service.
+"""사진 갤러리 서비스.
 
-Backs `/users/me/photos` endpoints. Keeps the legacy users.photo_url in
-sync with whichever photo is flagged primary so existing match-card /
-public-profile callers don't have to be rewritten.
+/users/me/photos 엔드포인트들의 도메인 로직을 담는다.
+최대 6장 제한, 메인 사진 지정 시 다른 사진의 is_primary 를 원자적으로
+내리는 처리, 그리고 메인 변경 시 legacy users.photo_url 도 함께
+동기화해 매칭 카드/공개 프로필 기존 호출부를 손대지 않게 유지한다.
 """
 
 from __future__ import annotations

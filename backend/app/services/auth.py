@@ -1,14 +1,14 @@
-"""Kakao OAuth 2.0 helpers.
+"""카카오 OAuth 2.0 헬퍼.
 
-Two HTTP calls are needed against Kakao's API:
+카카오 API 호출 두 단계를 감싼다:
+  1. POST https://kauth.kakao.com/oauth/token
+     redirect_uri 가 받은 code 를 access_token 으로 교환.
+  2. GET  https://kapi.kakao.com/v2/user/me
+     안정적 kakao_id 와 닉네임/사진을 가져온다.
 
-1. ``POST https://kauth.kakao.com/oauth/token`` — exchange the ``code`` Kakao
-   gives our redirect URI for an ``access_token``.
-2. ``GET  https://kapi.kakao.com/v2/user/me`` — fetch the user's profile so we
-   can grab a stable ``id`` (their kakao_id) and any nickname/photo.
-
-Errors from Kakao are surfaced as ``HTTPException(400)`` so the caller's
-redirect handler can display something reasonable instead of a generic 500.
+카카오 측 오류는 HTTPException(400)으로 변환해 콜백 핸들러가 일반 500
+대신 합리적인 안내를 보일 수 있게 한다. 또한 탈퇴 시 unlink API 호출
+헬퍼도 함께 제공한다.
 """
 import logging
 from typing import Any

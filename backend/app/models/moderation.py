@@ -1,13 +1,14 @@
-"""User moderation state — strike counts + chat-suspension cooldown.
+"""사용자 모더레이션 스트라이크 + 채팅 정지 쿨다운 기록.
 
-We append a Strike row each time a user's chat message is auto-blocked
-by chat_moderation. A short cooldown (chat_suspended_until) is applied
-when the running count crosses thresholds, so repeat offenders get a
-24h chat timeout without us doing manual moderation.
+채팅 메시지가 chat_moderation에 의해 자동 차단될 때마다
+UserStrike 한 행을 append 한다. 누적 카운트가 임계치를 넘으면
+24h 채팅 정지(users.chat_suspended_until)를 걸어 수동 운영 없이도
+반복 위반자를 일시 차단한다.
 
-Photos rejected by photo_moderation don't add strikes (the user only
-sees the reject message and re-uploads). We only escalate on chat
-because that's where back-and-forth abuse happens.
+사진 모더레이션(photo_moderation)에서 거절된 업로드는 스트라이크를
+쌓지 않는다 — 사용자에게 거절 사유만 보여주고 재업로드를 허용한다.
+채팅에서만 누적 추적하는 이유는 그곳이 실제 왕복 학대가 발생하는
+지점이기 때문.
 """
 
 from datetime import datetime, timezone

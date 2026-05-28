@@ -1,7 +1,8 @@
-"""Chat-related Pydantic schemas.
+"""채팅 관련 Pydantic 스키마 — 프론트가 소비하는 와이어 포맷.
 
-Wire shapes the frontend consumes: ``MessageOut``, ``ChatThreadSummary``,
-plus the bodies for sending a message and starting a thread.
+- MessageOut / MessageCreate: 메시지 단건 입출력
+- ChatPeer: 채팅 헤더/목록에 노출되는 상대방 공개 정보
+- ChatThreadSummary: 채팅 목록의 한 행 요약
 """
 
 from datetime import datetime

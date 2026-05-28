@@ -1,3 +1,13 @@
+"""사용자 입출력 스키마.
+
+- BirthDataCreate / BirthDataUpdate: 출생 데이터 등록/수정
+- ProfileUpdate: 닉네임/한줄소개/기본정보 PATCH 페이로드
+- UserProfileResponse: 내 프로필 전체 응답
+- PublicProfileResponse: 다른 사용자 공개 프로필(사진 블러 포함)
+
+시간 형식(HH:MM)과 MBTI 4자리는 field_validator 로 검증한다.
+"""
+
 import re
 from datetime import date, datetime
 from typing import Literal, Optional

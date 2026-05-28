@@ -1,3 +1,9 @@
+"""신고 입출력 스키마 + 사유 enum.
+
+ReportReason = inappropriate | fake | spam | other.
+"other" 사유는 details 가 필수이며, 검증은 라우터에서 처리한다.
+"""
+
 from datetime import datetime
 from typing import Literal, Optional
 

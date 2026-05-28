@@ -1,19 +1,14 @@
-"""Daily match assignments — 4-card slot system.
+"""매일 매칭 카드 배정 기록 — 4-슬롯 시스템.
 
-Each user gets a 4-card pack assigned every 48 hours. The 4 slots have
-different unlock semantics:
+한 cycle은 같은 assigned_at을 공유하는 4행으로 구성된다.
+  slot 0: 사주 기반 무료 — assigned_at 부터 공개
+  slot 1: 자미두수 기반 유료 — assigned_at 부터 공개, 결제 전 사진 블러
+  slot 2: 사주 기반 무료 — assigned_at + 24h 부터 공개
+  slot 3: 자미두수 기반 유료 — assigned_at + 24h 부터 공개 + 결제 필요
 
-  slot 0 → 사주 기반 무료. Unlocked at assigned_at.
-  slot 1 → 자미두수 기반 유료. Unlocked at assigned_at, but photo blinded
-           unless the viewer has paid.
-  slot 2 → 사주 기반 무료. Unlocked at assigned_at + 24h.
-  slot 3 → 자미두수 기반 유료. Unlocked at assigned_at + 24h, photo
-           blinded unless paid.
-
-A "cycle" = the 4 rows sharing one assigned_at. The next cycle is created
-on the first /compatibility/today call after `assigned_at + 48h`. Older
-rows stay in the table — `/compatibility/history` reads them all to build
-the cumulative match history shown on /matching.
+다음 cycle은 assigned_at + 48h 이후 첫 /compatibility/today 호출에서
+생성된다. 기존 행은 남아 /compatibility/history 가 누적 매칭 히스토리
+를 만드는 데 사용한다.
 """
 
 from datetime import datetime, timezone

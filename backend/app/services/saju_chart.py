@@ -1,7 +1,8 @@
-"""사주 명식(命式) lookup tables — 십성·지장간·12운성·12신살.
+"""사주 명식(命式) 룩업표 — 십성/지장간/12운성/12신살.
 
-Self-contained pure Python; called from `services.saju.calculate()` to
-enrich each pillar with the rows shown in a traditional 명식 chart.
+순수 파이썬 dict + 함수만으로 구성되어 외부 의존성이 없다.
+services/saju.calculate() 에서 호출해 각 기둥을 전통 명식표에 표시되는
+행(천간/십성/지지/십성/지장간/12운성/12신살)으로 풍부화한다.
 """
 
 from __future__ import annotations

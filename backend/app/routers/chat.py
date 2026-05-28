@@ -1,13 +1,16 @@
-"""Chat endpoints — REST + polling.
+"""채팅 REST + 폴링 엔드포인트.
 
-The frontend identifies a conversation by the OTHER user's id (peer_id).
-That keeps URLs like /matching/{peer_id} stable on the client side; the
-server resolves to a canonical ChatThread row internally.
+프론트는 상대방의 user_id(peer_id)로 대화를 식별하고,
+서버 측에서 내부적으로 canonical ChatThread row 로 변환한다.
 
-Polling pattern:
-    GET /chat/with/{peer_id}/messages?after_id=<last_seen_id>
-returns only messages with id > after_id, so the client can append new
-ones cheaply every couple of seconds.
+폴링 패턴:
+  GET /chat/with/{peer_id}/messages?after_id=<last_seen_id>
+  → after_id 보다 큰 id 만 반환 → 클라가 2~3초마다 append 가능
+
+메시지 전송 시 chat_moderation 3-layer 파이프라인을 통과해야 하며,
+차단 시 UserStrike 가 적재되고 누적 임계치를 넘으면 24h 채팅 정지.
+이미지/음성 첨부는 storage.upload_chat_image/audio 로 업로드 후
+media_url + media_type 으로 저장된다.
 """
 
 from datetime import datetime, timedelta, timezone

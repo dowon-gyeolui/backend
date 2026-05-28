@@ -1,3 +1,17 @@
+"""환경설정(pydantic-settings).
+
+.env 파일에서 다음 값들을 읽어 들인다.
+  - database_url: SQLite(기본) 또는 PostgreSQL 접속 문자열
+  - kakao_client_id / kakao_client_secret / kakao_redirect_uri:
+    카카오 OAuth 설정
+  - kakao_admin_key: 탈퇴 시 unlink API 호출용 어드민 키
+  - secret_key / access_token_expire_minutes: JWT 발급용
+  - frontend_urls: CORS 허용 및 OAuth 후 리다이렉트 대상 (콤마 구분)
+
+SQLite 기본 경로는 backend/ 디렉터리를 기준으로 절대 경로로 고정해
+실행 위치(uvicorn / 스크립트)에 따라 다른 DB 파일을 바라보지 않게 한다.
+"""
+
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict

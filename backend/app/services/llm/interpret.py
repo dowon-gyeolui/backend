@@ -1,16 +1,16 @@
-"""LLM-based interpretation layer.
+"""LLM 기반 풀이 레이어.
 
-Role: summarize retrieved classical passages into a concise Korean
-explanation of the user's saju. The LLM is a FORMATTER, never a source
-of truth — it must only use the provided source passages as grounding.
+역할: retrieval 이 가져온 원전 구절들을 사용자 사주에 맞춘 간결한 한국어
+해석으로 정리한다. LLM 은 어디까지나 포매터이며 진실의 원천이 아니다 —
+제공된 원전 구절만을 grounding 으로 사용해야 한다.
 
-Contract:
-  - Input: saju result + list of retrieved knowledge chunks (with citations)
-  - Output: 2~3 Korean sentences, or None on failure
-  - Never invents content beyond the retrieved passages
-  - Never makes deterministic predictions (건강/재물/수명 단정 금지)
+계약:
+  - 입력: 사주 결과 + retrieval 청크 목록(인용 포함)
+  - 출력: 한국어 2~3문장 또는 실패 시 None
+  - 제공된 구절 밖의 내용은 만들지 않음
+  - 건강/재물/수명 단정 같은 결정론적 예측 금지
 
-Cost: ~$0.001 per call at gpt-4o-mini prices (2~4 chunks × 500 tokens).
+비용: gpt-4o-mini 기준 호출당 약 $0.001 (청크 2~4개 × 500 토큰 수준).
 """
 
 from __future__ import annotations

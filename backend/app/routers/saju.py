@@ -1,3 +1,15 @@
+"""사주/자미두수/인연운/행동 가이드 엔드포인트.
+
+- GET /saju/me: 내 사주 요약 (4기둥 + 오행 분포 + 짧은 풀이)
+- GET /saju/me/detailed: 5섹션 심층 풀이 (성격/연애/재물/건강/조언, LLM)
+- GET /saju/me/jamidusu: 자미두수 차트 + 요약
+- GET /saju/me/jamidusu-deep: 자미두수 × 사주 융합 심층 풀이 (LLM, 유료)
+- GET /saju/me/today-fortune: 오늘의 인연운(일진 기반)
+- GET /saju/me/action-guide: 오늘의 행동 가이드(옷/태도/마음가짐 3줄)
+
+모든 엔드포인트는 birth_date 가 입력된 사용자만 호출 가능.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 

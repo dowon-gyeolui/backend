@@ -1,3 +1,11 @@
+"""추천 카드 엔드포인트.
+
+- GET /recommendations/me: 사전 추천 — 사주 주도 오행 기반 컬러/장소/스타일
+  (rule-based, 무료, LLM 호출 없음)
+- GET /recommendations/pair/{target_user_id}: 사후 추천 — 매칭된 상대
+  와의 강점/유의점/대화 주제. 원전 검색 + LLM 생성, 유료 전용.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 

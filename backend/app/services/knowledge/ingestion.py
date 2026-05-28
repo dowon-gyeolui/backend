@@ -1,19 +1,19 @@
-"""Knowledge ingestion service.
+"""원전 텍스트 청크 적재 서비스 — 해시 기반 멱등(idempotent) 보장.
 
-ingest_text() is the single entrypoint used by:
-  - POST /knowledge/ingest (dev API endpoint)
-  - future CLI / batch scripts
-  - future file readers (txt / md / pdf → text → ingest_text)
+ingest_text() 가 단일 진입점이며 다음에서 호출된다.
+  - POST /knowledge/ingest (개발용 API)
+  - 향후 CLI / 배치 스크립트
+  - 향후 파일 리더(txt/md/pdf → 텍스트 → ingest_text)
 
-Responsibilities:
-  - Chunk the input via chunking.chunk_text()
-  - Compute SHA-256 content_hash for each chunk
-  - Skip chunks whose hash already exists (idempotent re-ingestion)
-  - Persist new chunks with full metadata in reading order
+책임:
+  - chunking.chunk_text() 로 청킹
+  - 각 청크의 SHA-256 content_hash 계산
+  - 이미 존재하는 해시는 스킵(재적재 안전)
+  - 새 청크는 전체 메타데이터와 함께 읽기 순서대로 적재
 
-Out of scope (marked for future):
-  - File format readers — wrap this function and pass extracted text
-  - Embedding generation — run after commit, populate embedding column
+범위 밖(향후):
+  - 파일 포맷 리더 — 이 함수에 추출된 텍스트를 넘겨 감싸기만 하면 됨
+  - 임베딩 생성 — 커밋 후 별도로 embedding 컬럼을 채움
 """
 
 import hashlib

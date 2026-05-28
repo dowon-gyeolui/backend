@@ -1,3 +1,15 @@
+"""내 프로필/출생 데이터/사진 갤러리 + 공개 프로필 조회 엔드포인트.
+
+- GET /users/me: 내 전체 프로필
+- PATCH /users/me/profile: 닉네임/한줄소개/기본정보 부분 수정
+- POST /users/me/birth-data: 생년월일/시간/양음력/성별/출생지 등록(교체)
+- PATCH /users/me/birth-data: 위 필드 부분 수정
+- POST/DELETE /users/me/photos: 사진 업로드(Rekognition 검수 포함)/삭제
+- PATCH /users/me/photos/{id}/primary: 메인 사진 변경
+- DELETE /users/me: 탈퇴 (카카오 unlink + 보유 데이터 정리)
+- GET /users/{user_id}/public-profile: 공개 프로필 (무료 티어는 사진 블러)
+"""
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession

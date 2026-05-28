@@ -1,19 +1,17 @@
-"""Deterministic text chunker with merge-short post-pass.
+"""결정론적 텍스트 청커 — 짧은 청크 병합 후처리 포함.
 
-Strategy (in order):
-  1. Split by blank-line paragraphs.
-  2. Greedily merge short paragraphs until max_chars is reached.
-  3. If one paragraph exceeds max_chars, split by sentence boundary
-     (`.` `!` `?` `。` `？` `！` followed by whitespace).
-  4. If a single sentence still exceeds max_chars, hard-split on max_chars.
-  5. Post-pass: fold chunks shorter than `min_chars` into a neighbor as long
-     as the merged size stays within max_chars * 1.3 (soft overage tolerated
-     to avoid tiny fragments that hurt retrieval quality).
+전략(순서대로):
+  1. 빈 줄 기준 단락 분리.
+  2. 짧은 단락을 max_chars 이하로 그리디 병합.
+  3. 단락 하나가 max_chars 를 넘으면 문장 경계로 분할
+     (`.` `!` `?` `。` `？` `！` + 공백).
+  4. 한 문장이 여전히 max_chars 보다 길면 max_chars 단위로 강제 분할.
+  5. min_chars 미만의 조각은 max_chars * 1.3 까지 허용하며 이웃과 병합.
 
-Properties:
-  - Deterministic: same input → same output.
-  - Order-preserving: chunks returned in reading order.
-  - No overlap (disjoint retrieval units).
+특성:
+  - 결정론적: 같은 입력 → 같은 출력.
+  - 순서 보존: 본문 읽기 순서대로 반환.
+  - 비중복: 청크 간 오버랩 없음.
 """
 
 from __future__ import annotations

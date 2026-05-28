@@ -1,3 +1,14 @@
+"""궁합/매칭/데이트 추천 응답 스키마.
+
+- CompatibilityScore: 단순 점수(0~100) + 요약 한 줄
+- CompatibilityReport: 채팅 헤더 drawer 용 간단 요약
+- DestinyAnalysis: 운명의 실타래 5섹션 풀이
+- DateRecommendation / DateSpot: 데이트 코스 추천
+- MatchCandidate: 매칭 카드 한 장의 공개 정보(블러 여부 포함)
+- DailyMatchPack: 오늘의 4-슬롯 묶음
+- HistoryMatchEntry: 누적 매칭 히스토리 한 행
+"""
+
 from datetime import datetime
 from typing import Literal, Optional
 

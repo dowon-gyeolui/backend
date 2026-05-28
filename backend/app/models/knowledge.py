@@ -1,3 +1,17 @@
+"""원전 청크(KnowledgeChunk) 테이블 — RAG 검색의 기본 단위.
+
+사주/자미두수 원전을 청킹해 한 행 = 한 검색 단위로 저장한다.
+"이 해석의 출처: 《적천수》 3장 오행론" 처럼 풀이의 근거 인용으로
+바로 노출할 수 있도록 source_type / source_title / chapter / section /
+chunk_index 등의 위치 메타와 함께 보관한다.
+
+임베딩(embedding)은 JSON 배열로 저장하며, PostgreSQL에서는 JSONB,
+SQLite에서는 일반 JSON 으로 자동 매핑된다. 추후 pgvector 도입 시
+호출부 변경 없이 컬럼 타입만 교체하면 된다.
+
+content_hash 는 SHA-256 으로 idempotent 재적재를 보장한다.
+"""
+
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Index, Integer, String, Text

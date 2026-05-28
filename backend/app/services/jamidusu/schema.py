@@ -1,7 +1,7 @@
-"""자미두수 차트 dataclass — 계산 결과를 들고 다닐 내부 자료구조.
+"""자미두수 차트 내부 dataclass.
 
-API 응답용 Pydantic 모델은 `app.schemas.saju` 에 별도. 이 모듈은
-계산 단계에서만 쓰는 가벼운 dataclass.
+계산 단계에서만 쓰는 가벼운 자료구조(Star, Palace, JamidusuChart).
+API 응답용 Pydantic 모델은 app.schemas.saju 에 별도로 존재한다.
 """
 
 from __future__ import annotations

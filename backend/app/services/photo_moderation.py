@@ -1,19 +1,16 @@
-"""Profile-photo automated moderation using AWS Rekognition.
+"""프로필 사진 자동 모더레이션 — AWS Rekognition 기반.
 
-Two checks per image:
-  1. DetectFaces → ensures the photo has exactly one face that's reasonably
-     sized within the frame (rejects landscape shots, group photos, photos
-     where the user is barely visible).
-  2. DetectModerationLabels → rejects NSFW / violent content.
+한 장당 두 가지 검사를 수행:
+  1. DetectFaces  — 얼굴이 정확히 한 개이고 프레임 안에서 충분한
+     크기를 차지하는지(풍경 사진, 단체 사진, 사용자가 거의 보이지
+     않는 사진 거절).
+  2. DetectModerationLabels — NSFW/폭력 콘텐츠 거절.
 
-Both are read-only Rekognition calls billed at ~$0.001 each, so a typical
-profile-photo upload triggers about ₩2.6 of cost. Free-tier covers the
-first 5,000 calls/month for the first 12 months.
+두 호출 모두 읽기 전용이며 호출당 약 $0.001 으로, 일반 프로필 업로드
+한 건당 약 ₩2.6 비용. 가입 후 첫 12개월 동안 월 5,000회까지 무료 티어.
 
-If AWS credentials aren't configured, this module degrades gracefully —
-the upload is allowed through (with a logged warning). That keeps local
-dev / unconfigured environments working without forcing every contributor
-to provision an AWS account.
+AWS 자격 정보가 없을 때는 graceful degrade — 경고 로그만 남기고
+업로드를 허용한다. 로컬 개발/미설정 환경이 멈추지 않게 하기 위함.
 """
 
 from __future__ import annotations

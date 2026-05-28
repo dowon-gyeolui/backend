@@ -1,7 +1,7 @@
-"""User reports — 신고 기록.
+"""사용자 신고 기록 — 운명 분석 리포트 drawer 의 신고하기 흐름에서 적재.
 
-Append-only. Stored so the moderation team can review chat history later.
-The `details` column is free-form text used by the "기타" reason category.
+Append-only로 기록해 운영팀이 추후 채팅 히스토리와 함께 검토할 수 있다.
+details 컬럼은 "기타" 사유 카테고리에서 자유 서술을 받는 자리.
 """
 
 from datetime import datetime, timezone

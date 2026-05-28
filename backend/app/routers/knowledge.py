@@ -1,3 +1,14 @@
+"""원전 지식 청크 관리 엔드포인트 (개발/내부용).
+
+- POST /knowledge/chunks: 청킹된 한 조각을 직접 저장(중복은 무시)
+- POST /knowledge/ingest: 원문 텍스트 → 청킹 → 일괄 적재
+- POST /knowledge/query: source_type/topic 필터 + 키워드/벡터 검색
+- POST /knowledge/embed/{chunk_id}: 단일 청크 임베딩 생성/갱신
+
+운영 시 사용자에게 직접 노출되지는 않고, 사주/자미두수/궁합 풀이
+서비스가 retrieval 을 통해 우회적으로 사용한다.
+"""
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

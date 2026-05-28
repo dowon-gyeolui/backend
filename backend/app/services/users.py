@@ -1,3 +1,15 @@
+"""사용자 도메인 서비스.
+
+- set_birth_data / update_birth_data: 출생 데이터 등록/부분 수정
+- update_profile: 닉네임/한줄소개/기본정보 PATCH
+- build_public_profile: 공개 프로필 조립 (무료 티어 사진 블러)
+- delete_user_account: 탈퇴 — 채팅/매칭/사진/신고/스트라이크 정리 +
+  Cloudinary 사진 삭제 + 카카오 unlink 호출
+
+라우터(routers/users.py)는 입력 검증·인증만 책임지고 도메인 처리는
+이 모듈로 위임한다.
+"""
+
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

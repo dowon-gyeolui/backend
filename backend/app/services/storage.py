@@ -1,9 +1,14 @@
-"""Image storage helpers — Cloudinary backend.
+"""이미지 저장소 헬퍼 — Cloudinary 백엔드.
 
-Profile photos go through this so we keep DB rows light (just URLs)
-and the heavy bytes live on Cloudinary's CDN. Other storage backends
-(S3, Render disk) can plug in here later behind the same `upload_image`
-contract.
+프로필 사진과 채팅 미디어(이미지/음성)는 이 모듈을 통해 업로드되어
+DB row 는 가볍게(URL 만) 유지하고 실제 바이트는 Cloudinary CDN 에
+얹는다. S3/Render 디스크 등 다른 백엔드도 동일 upload_image 계약
+뒤에서 추후 갈아끼울 수 있다.
+
+Cloudinary SDK 는 환경변수(CLOUDINARY_URL 또는 세 분리 변수)를
+import 시점에 읽으므로 별도 초기화 코드 없이 .env / Render 환경
+설정만으로 동작한다. 자격 정보가 없으면 StorageNotConfiguredError
+를 발생시킨다.
 """
 
 from __future__ import annotations

@@ -1,25 +1,17 @@
-"""Chat-message moderation — 3-layer pipeline.
+"""채팅 메시지 모더레이션 — 3-layer 파이프라인.
 
-Why three layers:
-  Layer 1 (regex)        — Cheap, deterministic, runs in ~0.5ms. Catches
-                           the highest-priority class of abuse on a dating
-                           app: trying to take the conversation off-platform
-                           by leaking phone numbers / KakaoTalk IDs / URLs.
-                           Off-platform leaks are revenue-killers (no
-                           subscription needed once they have your number).
-  Layer 2 (profanity)    — Tiny Korean profanity dictionary + simple
-                           obfuscation handling (whitespace, repeated
-                           chars). Catches the low-hanging insults instantly.
-  Layer 3 (OpenAI Mod.)  — Free OpenAI Moderation API for nuanced cases
-                           (harassment, threats, sexual content, hate).
-                           Multilingual / context-aware, ~200~400ms latency.
+Layer 1 (regex)     — 전화번호 / 카카오톡 ID / URL 등 연락처 유출 차단.
+                      데이팅 앱에서 가장 치명적인 off-platform 유출을
+                      0.5ms 이내로 차단하기 위한 결정론적 1차 필터.
+Layer 2 (욕설)      — 한국어 욕설 사전 + 공백/반복 글자 난독화 처리.
+                      흔한 욕설을 즉시 차단.
+Layer 3 (OpenAI Mod)— 무료 OpenAI Moderation API. 다국어/문맥 인식
+                      ~200~400ms 지연. 괴롭힘/위협/성적/혐오 등 미묘한
+                      케이스 처리.
 
-A message that fails layers 1 or 2 is **hard-blocked** before reaching the
-DB. Layer 3 flags are also hard-blocked but logged with the category so
-we can iterate on thresholds.
-
-Each block increments the user's strike counter. Frontend handles display
-(error toast + warning copy).
+Layer 1·2는 DB 도달 전 hard-block, Layer 3 도 차단하되 카테고리 로그를
+남겨 임계치를 운영적으로 조정 가능하게 한다.
+차단 시 user_strikes 가 증가하며 누적치에 따라 24h 채팅 정지가 걸린다.
 """
 
 from __future__ import annotations

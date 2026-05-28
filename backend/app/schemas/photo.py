@@ -1,3 +1,9 @@
+"""사진 갤러리 스키마.
+
+- UserPhotoResponse: user_photos 한 행 표현
+- UserPhotoListResponse: 갤러리 목록 + primary_photo_url
+"""
+
 from datetime import datetime
 from typing import Optional
 
