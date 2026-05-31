@@ -1,4 +1,4 @@
-# ⚙️ ZAMI 백엔드
+# ZAMI 백엔드
 
 > FastAPI 기반 사주/자미두수 매칭 + 채팅 + 모더레이션 백엔드
 
@@ -9,18 +9,18 @@
 
 ---
 
-## 📋 프로젝트 개요
+## 프로젝트 개요
 
 | 항목 | 내용 |
 |---|---|
 | **역할** | 사주 계산, 매칭, 채팅, 모더레이션, OAuth, 결제 (예정) |
 | **배포** | Render (api.thezami.io) |
-| **DB (프로덕션)** | PostgreSQL |
-| **DB (로컬)** | SQLite |
+| **DB** | PostgreSQL (Supabase Session pooler) |
+| **DB fallback** | SQLite (DATABASE_URL 미설정 시) |
 
 ---
 
-## 🛠 기술 스택
+## 기술 스택
 
 ### 프레임워크 / 핵심
 - **FastAPI 0.115.0** + Uvicorn 0.30.6
@@ -39,7 +39,7 @@
 
 ---
 
-## 📁 폴더 구조
+## 폴더 구조
 
 ```
 backend/app
@@ -60,7 +60,7 @@ backend/app
 └── scripts/             # 인제스트, 시드, 마이그레이션 스크립트
 ```
 
-### 📊 models — SQLAlchemy ORM
+### models — SQLAlchemy ORM
 
 | 파일 | 모델 |
 |---|---|
@@ -72,7 +72,7 @@ backend/app
 | `report.py` | Report (사용자 신고) |
 | `knowledge.py` | KnowledgeChunk (RAG) |
 
-### 🔌 routers — HTTP 라우트
+### routers — HTTP 라우트
 
 | 파일 | 주요 엔드포인트 |
 |---|---|
@@ -85,15 +85,15 @@ backend/app
 | `reports.py` | `/reports` |
 | `knowledge.py` | `/knowledge/chunks`, `/ingest`, `/retrieve` |
 
-### 🧠 services — 비즈니스 로직
+### services — 비즈니스 로직
 
 | 파일 | 역할 |
 |---|---|
 | `auth.py` | 카카오 OAuth (token 교환, 프로필, unlink) |
 | `users.py` | User CRUD + 탈퇴 시 FK 정리 + public_profile |
 | `photos.py` | 다중 사진 갤러리 (add/delete/set_primary) |
-| `photo_moderation.py` | 🛡 AWS Rekognition (얼굴/NSFW) |
-| `chat_moderation.py` | 🛡 채팅 3-레이어 (정규식/욕설/OpenAI Moderation) |
+| `photo_moderation.py` | AWS Rekognition (얼굴/NSFW) |
+| `chat_moderation.py` | 채팅 3-레이어 (정규식/욕설/OpenAI Moderation) |
 | `compatibility.py` | 사주 호환성 + 매칭 + daily 사이클 + history |
 | `saju.py` | 사주 계산 메인 진입점 |
 | `saju_chart.py` | 명식 룩업 (천간/지지/십성/지장간/12운성/12신살) |
@@ -103,7 +103,7 @@ backend/app
 | `knowledge/` | RAG (chunking, embedding, retrieval, ingestion) |
 | `llm/interpret.py` | OpenAI 기반 사주/페어/자미두수/데이트 풀이 |
 
-### 📜 scripts
+### scripts
 
 ```bash
 build_knowledge_jsonl.py    # 원전 → JSONL
@@ -116,7 +116,7 @@ validate_jsonl.py           # JSONL 스키마 검증
 
 ---
 
-## 🗄 데이터 모델
+## 데이터 모델
 
 ### `users`
 ```
@@ -173,15 +173,15 @@ knowledge_chunks:  id, source_title, source_author, topic, chapter
 
 ---
 
-## 🔌 주요 API 엔드포인트
+## 주요 API 엔드포인트
 
-### 🔐 인증
+### 인증
 | Method | Path | 설명 |
 |---|---|---|
 | GET | `/auth/kakao` | 카카오 동의 페이지로 redirect |
 | GET | `/auth/kakao/callback` | code → JWT 발급 → 프론트 redirect |
 
-### 👤 사용자
+### 사용자
 | Method | Path | 설명 |
 |---|---|---|
 | GET | `/users/me` | 내 프로필 |
@@ -197,14 +197,14 @@ knowledge_chunks:  id, source_title, source_author, topic, chapter
 | DELETE | `/users/me` | 탈퇴 (FK 정리 + 카카오 unlink) |
 | GET | `/users/{id}/public-profile` | 상대 공개 프로필 |
 
-### 🔮 사주
+### 사주
 | Method | Path | 설명 |
 |---|---|---|
 | GET | `/saju/me` | 4기둥 + 오행 + 짧은 해석 |
 | GET | `/saju/me/detailed` | + 4섹션 LLM 풀이 |
 | GET | `/saju/me/jamidusu` | 자미두수 12궁 + 14주성 (프리미엄) |
 
-### 💕 매칭
+### 매칭
 | Method | Path | 설명 |
 |---|---|---|
 | GET | `/compatibility/score/{id}` | 두 사용자 호환성 점수 |
@@ -215,7 +215,7 @@ knowledge_chunks:  id, source_title, source_author, topic, chapter
 | GET | `/compatibility/destiny/{id}` | 운명의 실타래 5섹션 LLM |
 | GET | `/compatibility/date-recommendation/{id}` | 데이트 장소 4-5개 |
 
-### 💬 채팅
+### 채팅
 | Method | Path | 설명 |
 |---|---|---|
 | GET | `/chat/threads` | thread 리스트 (unread 포함) |
@@ -230,25 +230,25 @@ knowledge_chunks:  id, source_title, source_author, topic, chapter
 
 ## ⭐ 핵심 기능
 
-### 🔐 1. 카카오 OAuth
+### 1. 카카오 OAuth
 - `services/auth.py` — token 교환, 프로필 조회, **unlink**
 - 탈퇴 시 `unlink_kakao_user(kakao_id)` 자동 호출
 - `KAKAO_ADMIN_KEY` 사용 → access_token 없이도 unlink 가능
 
-### 🔮 2. 사주 계산
+### 2. 사주 계산
 - `services/saju_engine.py` — 절기 기준 일/월/년/시간
 - `services/saju_chart.py` — 천간/지지/십성/지장간/12운성/12신살 룩업
 - `services/saju.py` — 메인 진입점, 캐시 친화적
 - 음력 변환 (`korean-lunar-calendar`)
 - 출생지 기반 지역시 보정
 
-### 📚 3. RAG (Retrieval-Augmented Generation)
+### 3. RAG (Retrieval-Augmented Generation)
 - **원전**: 궁통보감 (여춘태), 자미두수전서, 적천수천미
 - JSONL chunk + 한글 번역
 - embedding 유사도 검색
 - LLM 풀이 시 관련 원전 구절 grounding
 
-### 🤖 4. LLM 사용
+### 4. LLM 사용
 - **모델**: `gpt-4o-mini` (cost-optimized)
 - **모더레이션**: `omni-moderation-latest` (한국어, 무료)
 
@@ -261,7 +261,7 @@ knowledge_chunks:  id, source_title, source_author, topic, chapter
 | `generate_date_recommendation` | 데이트 장소 |
 | `generate_pair_recommendation` | 페어 추천 |
 
-### 💕 5. 4-슬롯 매칭
+### 5. 4-슬롯 매칭
 
 **🕛 KST 자정 00:00 anchor** — 모든 사용자가 같은 사이클 시각 공유 (하루 중 어떤 시각에 접속해도 슬롯 unlock 시각은 D+3 자정으로 고정)
 
@@ -276,13 +276,13 @@ knowledge_chunks:  id, source_title, source_author, topic, chapter
 - `GET /today` — 현재 4장, 96h 지나면 새 사이클 자동 생성
 - `GET /history` — 누적 노출된 모든 후보 (candidate_id dedup)
 
-### 📷 6. 다중 사진 갤러리
+### 6. 다중 사진 갤러리
 - 사용자별 최대 **6장**
 - `is_primary` 플래그로 메인 1장 선택
 - 삭제 시 Cloudinary asset도 destroy
 - 메인 삭제 시 다른 사진 자동 승격
 
-### 🛡 7. 사진 모더레이션 (AWS Rekognition)
+### 7. 사진 모더레이션 (AWS Rekognition)
 | 검사 | 거절 조건 |
 |---|---|
 | `DetectFaces` | 얼굴 0개 / 2개 이상 / 면적 8% 미만 / 신뢰도 90% 미만 |
@@ -290,7 +290,7 @@ knowledge_chunks:  id, source_title, source_author, topic, chapter
 
 > Cloudinary 업로드 **이전**에 호출 → 실패 시 비용 절감
 
-### 🛡 8. 채팅 모더레이션 (3-레이어)
+### 8. 채팅 모더레이션 (3-레이어)
 | Layer | 방식 | 잡는 것 | 시간 |
 |---|---|---|---|
 | **1** | 정규식 | 휴대폰/카톡ID/SNS/URL leak | ~0.5ms |
@@ -299,12 +299,12 @@ knowledge_chunks:  id, source_title, source_author, topic, chapter
 
 > 위반 시 `user_strikes` 기록 → 24h 내 3회 → `chat_suspended_until` 24h
 
-### 🖼 9. Cloudinary 사진 처리
+### 9. Cloudinary 사진 처리
 - **EXIF 회전 적용** (`angle: exif`) → 안드로이드 사진 깨짐 방지
 - **HEIC → JPG** (`format: jpg`) → iOS 호환
 - 800×800 limit + quality auto → 사이즈 절감
 
-### 🔄 10. 자동 마이그레이션
+### 10. 자동 마이그레이션
 ```python
 # database.py
 init_db()
@@ -316,27 +316,27 @@ init_db()
 
 ---
 
-## 🌐 외부 통합
+## 외부 통합
 
-### ☁️ Cloudinary
+### Cloudinary
 - 프로필 사진 + 갤러리 + 채팅 미디어
 - EXIF 자동 회전 + JPG 변환
 
-### 🤖 OpenAI
+### OpenAI
 - `gpt-4o-mini` — 사주 LLM 풀이
 - `omni-moderation-latest` — 채팅 모더레이션 (한국어, 무료)
 - `text-embedding-3-small` — RAG 검색
 
-### 🛡 AWS Rekognition
+### AWS Rekognition
 - `DetectFaces` (얼굴 검증)
 - `DetectModerationLabels` (NSFW)
 - region: `ap-northeast-2` (서울)
 
-### 💬 Kakao
+### Kakao
 - OAuth 2.0 로그인
 - `/v1/user/unlink` (탈퇴 시 동의 해제)
 
-## 🚀 빌드 / 배포
+## 빌드 / 배포
 
 | 항목 | 값 |
 |---|---|
@@ -353,7 +353,7 @@ init_db()
 
 ---
 
-## 💻 개발 워크플로우
+## 개발 워크플로우
 
 ### 로컬 실행
 ```bash
@@ -373,7 +373,7 @@ python scripts/seed_demo_users.py          # 데모 사용자 생성
 
 ---
 
-## 🔒 보안 / 컴플라이언스
+## 보안 / 컴플라이언스
 
 ### 탈퇴 시 처리 순서 (`services/users.delete_account`)
 ```
@@ -388,7 +388,7 @@ python scripts/seed_demo_users.py          # 데모 사용자 생성
 ```
 
 ### 정책
-- ✅ CORS 허용 origin은 `FRONTEND_URLS` 콤마 분리로 명시
-- ✅ JWT는 `Authorization: Bearer` 헤더로 전달
-- ✅ 모든 사용자 식별 정보 (kakao_id 등)는 탈퇴 시 hard delete
-- ✅ 탈퇴 시 카카오에 unlink 신호 전달 (PIPA 준수)
+- - CORS 허용 origin은 `FRONTEND_URLS` 콤마 분리로 명시
+- - JWT는 `Authorization: Bearer` 헤더로 전달
+- - 모든 사용자 식별 정보 (kakao_id 등)는 탈퇴 시 hard delete
+- - 탈퇴 시 카카오에 unlink 신호 전달 (PIPA 준수)
