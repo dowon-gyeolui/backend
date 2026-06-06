@@ -1,9 +1,3 @@
-"""Temporary end-to-end flow test — exercises every MVP endpoint in-process.
-
-Uses httpx.AsyncClient with ASGITransport so no external uvicorn is needed.
-Prints condensed Korean output per step. Safe to delete after verification.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -55,10 +49,8 @@ async def _flip_is_paid(dev_user_id: int, paid: bool) -> None:
 
 
 async def main() -> int:
-    # Initialize DB (lifespan normally does this; ASGITransport skips lifespan).
     await init_db()
 
-    # Startup-log simulation (matches what uvicorn would show).
     from app.config import settings
     print(f"[startup] DATABASE_URL={settings.database_url}")
     async with AsyncSessionLocal() as db:
@@ -67,7 +59,6 @@ async def main() -> int:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # ---------- USER 1 setup ----------
         _section("1) /users/me/birth-data (user 1)")
         r = await client.post(
             "/users/me/birth-data",

@@ -1,27 +1,18 @@
-"""신고 입출력 스키마 + 사유 enum.
-
-ReportReason = inappropriate | fake | spam | other.
-"other" 사유는 details 가 필수이며, 검증은 라우터에서 처리한다.
-"""
-
 from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-# Frontend keeps these in sync — see components/matching/report-modal.tsx
 ReportReason = Literal[
-    "inappropriate",   # 부적절한 대화 (비속어, 욕설, 성희롱)
-    "fake",            # 허위 정보 및 사칭 (사진 도용, 나이/성별 속임)
-    "spam",            # 상업적 목적 및 스팸 (광고, 금전 요구)
-    "other",           # 기타 (직접 입력)
+    "inappropriate",
+    "fake",
+    "spam",
+    "other",
 ]
-
 
 class ReportCreate(BaseModel):
     reported_user_id: int
     reason: ReportReason
-    # 기타 카테고리는 details 가 필수, 그 외는 선택. 검증은 라우터에서.
     details: Optional[str] = Field(default=None, max_length=1000)
 
 

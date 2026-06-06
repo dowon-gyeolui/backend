@@ -1,14 +1,3 @@
-"""궁합/매칭 관련 엔드포인트.
-
-- GET /compatibility/score/{target_user_id}: 두 사용자 궁합 점수(0~100)
-- GET /compatibility/today: 오늘의 4-슬롯 매칭 카드 팩
-- GET /compatibility/history: 누적 매칭 후보 히스토리
-- GET /compatibility/destiny/{peer_id}: 운명의 실타래 5섹션 풀이 (유료)
-- GET /compatibility/date-recommendation/{peer_id}: 데이트 장소 추천 (유료)
-
-생년월일이 입력되지 않은 사용자/상대는 400으로 거절한다.
-"""
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 

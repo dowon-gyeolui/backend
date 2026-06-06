@@ -1,15 +1,3 @@
-"""사주/자미두수/인연운/행동 가이드 엔드포인트.
-
-- GET /saju/me: 내 사주 요약 (4기둥 + 오행 분포 + 짧은 풀이)
-- GET /saju/me/detailed: 5섹션 심층 풀이 (성격/연애/재물/건강/조언, LLM)
-- GET /saju/me/jamidusu: 자미두수 차트 + 요약
-- GET /saju/me/jamidusu-deep: 자미두수 × 사주 융합 심층 풀이 (LLM, 유료)
-- GET /saju/me/today-fortune: 오늘의 인연운(일진 기반)
-- GET /saju/me/action-guide: 오늘의 행동 가이드(옷/태도/마음가짐 3줄)
-
-모든 엔드포인트는 birth_date 가 입력된 사용자만 호출 가능.
-"""
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,12 +58,6 @@ async def get_my_saju_detailed(
 async def get_my_today_fortune(
     current_user: User = Depends(get_current_user),
 ):
-    """오늘의 인연운 — 사용자 사주 + 오늘 일진(日辰) 기반 일일 fortune.
-
-    매일 KST 자정에 일주가 바뀌므로 결과 문구도 매일 갱신됨. 같은 날
-    동일 사용자는 항상 동일 문구 (date+user_id seed). LLM 호출 없이
-    rule-based 템플릿 풀에서 결정론적 선택.
-    """
     _require_birth_date(current_user)
     fortune = compute_today_fortune(current_user)
     if fortune is None:
@@ -104,11 +86,6 @@ async def get_my_today_fortune(
 async def get_my_action_guide(
     current_user: User = Depends(get_current_user),
 ):
-    """오늘의 행동 가이드 — 사주 기반 동적 추천 (반말).
-
-    사용자 일주 + 오행 분포 + 오늘 일진 종합. 색상/시간대/장소/의상/
-    향수/음식/방위/숫자/잘 맞는 띠 등 항목별 추천. LLM 호출 없음.
-    """
     _require_birth_date(current_user)
     guide = build_action_guide(current_user)
     if guide is None:
@@ -123,12 +100,6 @@ async def get_my_action_guide(
 async def get_my_jamidusu(
     current_user: User = Depends(get_current_user),
 ):
-    """자미두수 12궁·14주성 LLM 풀이 — 프리미엄 사용자 전용 페이지에서 호출.
-
-    LLM 라운드트립이 들어가서 5~10초 정도 걸릴 수 있습니다. 실패 시
-    interpretation_status='pending' 으로 반환되며 클라이언트는 placeholder
-    문구로 폴백합니다.
-    """
     _require_birth_date(current_user)
     return saju_service.build_jamidusu_for(current_user)
 
@@ -138,16 +109,5 @@ async def get_my_jamidusu_deep(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """사주 + **결정론 자미두수 차트** + RAG 기반 융합 풀이.
-
-    표준 안성술(安星術) 6단계 + 부성·사화 로 12궁×별을 결정론적으로
-    계산한 뒤, gpt-4o 가 사주 일간 영향과 자미두수 별 성향을 교차해
-    풀이. 응답 시간 ~10초, gpt-4o 콜이라 비용도 큼 → 프리미엄 게이팅
-    + 캐시 필수.
-
-    실패 시 interpretation_status='partial' 로 차트만 반환 (별 배치는
-    결정론이라 항상 표시됨). 시간 모르는 사용자는 子時 가정 +
-    hour_assumed=true 로 표시.
-    """
     _require_birth_date(current_user)
     return await saju_service.build_jamidusu_deep_for(current_user, db)

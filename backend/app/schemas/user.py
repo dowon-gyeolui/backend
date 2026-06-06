@@ -1,13 +1,3 @@
-"""사용자 입출력 스키마.
-
-- BirthDataCreate / BirthDataUpdate: 출생 데이터 등록/수정
-- ProfileUpdate: 닉네임/한줄소개/기본정보 PATCH 페이로드
-- UserProfileResponse: 내 프로필 전체 응답
-- PublicProfileResponse: 다른 사용자 공개 프로필(사진 블러 포함)
-
-시간 형식(HH:MM)과 MBTI 4자리는 field_validator 로 검증한다.
-"""
-
 import re
 from datetime import date, datetime
 from typing import Literal, Optional
@@ -33,8 +23,6 @@ def _validate_mbti(v: Optional[str]) -> Optional[str]:
 
 
 class BirthDataCreate(BaseModel):
-    """Full birth data input — used for POST (create or replace)."""
-
     birth_date: date
     birth_time: Optional[str] = None
     calendar_type: Literal["solar", "lunar"] = "solar"
@@ -49,8 +37,6 @@ class BirthDataCreate(BaseModel):
 
 
 class BirthDataUpdate(BaseModel):
-    """Partial birth data input — used for PATCH (update only provided fields)."""
-
     birth_date: Optional[date] = None
     birth_time: Optional[str] = None
     calendar_type: Optional[Literal["solar", "lunar"]] = None
@@ -65,14 +51,6 @@ class BirthDataUpdate(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    """Partial profile update — used for PATCH /users/me/profile.
-
-    Covers card-display fields (nickname/photo) plus the optional
-    self-introduction (bio) and the structured "기본 정보" group used by the
-    profile-completion gauge: height, MBTI, job, region, smoking, drinking,
-    religion.
-    """
-
     nickname: Optional[str] = Field(default=None, min_length=1, max_length=50)
     photo_url: Optional[str] = Field(default=None, max_length=512)
     bio: Optional[str] = Field(default=None, max_length=120)
@@ -81,10 +59,6 @@ class ProfileUpdate(BaseModel):
     mbti: Optional[str] = Field(default=None, max_length=4)
     job: Optional[str] = Field(default=None, max_length=50)
     region: Optional[str] = Field(default=None, max_length=50)
-    # Figma uses X/O for smoking and a 4-step 음주 segmented control. The
-    # legacy values ("안함"/"전자담배"/"흡연" and "안함"/"가끔"/"자주") still
-    # validate so existing rows don't trip up the PATCH endpoint, but the
-    # canonical values written by the new modal are the Figma ones.
     smoking: Optional[
         Literal["X", "O", "안함", "전자담배", "흡연"]
     ] = None
@@ -137,13 +111,6 @@ class UserProfileResponse(BaseModel):
 
 
 class PublicProfileResponse(BaseModel):
-    """Another user's public profile — for the 매칭 카드 → 상세 정보 page.
-
-    Excludes private fields (kakao_id, exact birth_date/time, is_paid). The
-    photo is blinded for callers who haven't paid; the consumer (frontend)
-    decides how to render the locked state.
-    """
-
     id: int
     nickname: Optional[str] = None
     photo_url: Optional[str] = None  # null when blinded for the caller
@@ -161,14 +128,9 @@ class PublicProfileResponse(BaseModel):
     drinking: Optional[str] = None
     religion: Optional[str] = None
 
-    # Saju summary — same shape used by the match card so callers can
-    # render the same chips on the detail page.
     dominant_element: Optional[str] = None
     day_pillar: Optional[str] = None
 
-    # Compatibility score against the caller — convenient so the detail
-    # page doesn't need a separate /compatibility/score round-trip.
     compatibility_score: Optional[int] = None
 
-    # ZAMI 공식 얼굴 인증 뱃지 — 메인 사진이 strict face check 통과 시 True.
     is_face_verified: bool = False

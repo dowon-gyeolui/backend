@@ -1,15 +1,3 @@
-"""내 프로필/출생 데이터/사진 갤러리 + 공개 프로필 조회 엔드포인트.
-
-- GET /users/me: 내 전체 프로필
-- PATCH /users/me/profile: 닉네임/한줄소개/기본정보 부분 수정
-- POST /users/me/birth-data: 생년월일/시간/양음력/성별/출생지 등록(교체)
-- PATCH /users/me/birth-data: 위 필드 부분 수정
-- POST/DELETE /users/me/photos: 사진 업로드(Rekognition 검수 포함)/삭제
-- PATCH /users/me/photos/{id}/primary: 메인 사진 변경
-- DELETE /users/me: 탈퇴 (카카오 unlink + 보유 데이터 정리)
-- GET /users/{user_id}/public-profile: 공개 프로필 (무료 티어는 사진 블러)
-"""
-
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,12 +35,6 @@ async def get_public_profile(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """매칭 카드 → 상세 정보 페이지의 백엔드.
-
-    카카오 ID·정확한 생년월일 같은 민감 정보는 빼고, 사진은 무료 티어
-    호출자에 한해 가린다(is_blinded=True). 자기 자신 ID 도 허용해서
-    프론트가 같은 컴포넌트를 재활용할 수 있게 한다.
-    """
     target = await db.get(User, user_id)
     if target is None:
         raise HTTPException(
@@ -111,11 +93,6 @@ async def upload_my_photo(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """프로필 사진 업로드 — Cloudinary 로 올리고 photo_url 갱신.
-
-    multipart/form-data 의 `file` 필드로 이미지 파일을 받는다. 8MB 초과,
-    이미지가 아닌 MIME, 또는 Cloudinary 자격증명 미설정 시 4xx/5xx 반환.
-    """
     if file.content_type not in _ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -154,9 +131,6 @@ async def upload_my_photo(
 
     current_user.photo_url = result["url"]
 
-    # Mirror into the gallery so old single-photo uploads show up in the
-    # new gallery modal. We update an existing row when this user already
-    # has a "user_{id}" entry rather than creating duplicates each call.
     existing = await photos_service.list_photos(current_user, db)
     legacy = next(
         (p for p in existing if p.public_id and p.public_id.endswith(f"user_{current_user.id}")),
@@ -164,10 +138,8 @@ async def upload_my_photo(
     )
     if legacy is not None:
         legacy.url = result["url"]
-        # promote it to primary so callers see it in match cards
         for other in existing:
             other.is_primary = other.id == legacy.id
-        # Re-uploaded under strict moderation → mark verified.
         legacy.is_face_verified = True
         await db.commit()
         await db.refresh(current_user)
@@ -181,14 +153,6 @@ async def upload_my_photo(
     )
     await db.refresh(current_user)
     return current_user
-
-
-# --- Multi-photo gallery ------------------------------------------------
-#
-# /me/photo (singular) above stays as the legacy endpoint that overwrites
-# users.photo_url directly. The endpoints below back the new gallery —
-# users can upload up to MAX_PHOTOS_PER_USER, delete any of them, and
-# choose which one is the primary photo shown in match cards.
 
 def _photo_response(photo) -> UserPhotoResponse:
     return UserPhotoResponse.model_validate(photo, from_attributes=True)
@@ -300,12 +264,6 @@ async def upgrade_demo(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """데모 결제 — is_paid 플래그를 True 로 토글합니다.
-
-    실제 PG (PortOne / Toss) 연동 전까지 사용. 사용자가 매칭 모달의 결제
-    버튼을 누르면 호출되며, 다음 /compatibility/matches 응답에서
-    is_blinded=False 가 되어 사진 블러가 풀립니다.
-    """
     current_user.is_paid = True
     await db.commit()
     await db.refresh(current_user)
@@ -317,11 +275,5 @@ async def delete_my_account(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """탈퇴하기 — 사용자 계정과 관련 채팅 데이터 삭제.
-
-    동일 kakao_id 로 재가입할 수 있도록 row 자체를 제거합니다. 클라이언트는
-    응답을 받은 즉시 토큰을 폐기해야 합니다 (그 토큰의 user_id 는 더 이상
-    DB 에 존재하지 않으므로 이후 API 호출은 401 로 거절됩니다).
-    """
     await users_service.delete_account(current_user, db)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

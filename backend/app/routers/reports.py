@@ -1,11 +1,3 @@
-"""사용자 신고 접수 엔드포인트.
-
-POST /reports 로 한 건씩 적재한다. 운영팀(어드민 UI는 Phase 2)이 신고
-내역과 채팅 히스토리를 함께 확인해 조치 여부를 결정한다.
-reason="other" 인 경우 details 필드가 필수이며, 자기 자신/존재하지
-않는 사용자 신고는 거절한다.
-"""
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 

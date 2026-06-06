@@ -1,21 +1,9 @@
-"""추천 카드 스키마.
-
-- RecommendationCard: 사전 추천(무료, rule-based) — 색상/장소/스타일/요약
-- PairRecommendation: 사후 추천(유료, LLM+RAG) — 강점/유의점/대화 주제/원전 인용
-"""
-
 from typing import Optional
 
 from pydantic import BaseModel
 
 
 class RecommendationCard(BaseModel):
-    """Pre-match recommendation — "좋은 인연을 만나기 위한 방법" (무료).
-
-    Rule-based: derived from the user's saju dominant element.
-    No LLM / no RAG — just deterministic mappings so it works without API keys.
-    """
-
     user_id: int
     dominant_element: Optional[str] = None   # "목" | "화" | "토" | "금" | "수"
     colors: list[str] = []
@@ -25,13 +13,6 @@ class RecommendationCard(BaseModel):
 
 
 class PairRecommendation(BaseModel):
-    """Post-match recommendation — "연인 확률을 높일 수 있는 방법" (유료).
-
-    Derived per user pair. LLM produces `strengths` / `cautions` /
-    `conversation_starters` grounded in retrieved classical passages.
-    `sources` carries citation strings for UI evidence display.
-    """
-
     user_a_id: int
     user_b_id: int
     compatibility_score: int

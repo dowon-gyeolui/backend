@@ -1,17 +1,3 @@
-"""카카오 OAuth 2.0 진입점.
-
-플로우:
-  GET /auth/kakao           — 카카오 동의 페이지로 302 리다이렉트
-  GET /auth/kakao/callback  — 카카오가 code 파라미터로 콜백.
-                              code → access_token → 프로필 조회 →
-                              User upsert → JWT 발급 후 프론트로
-                              `${frontend_url}/auth/callback?token=...&is_new=...`
-                              로 302.
-
-is_new 플래그는 birth_date 가 NULL 인지로 판정해, 프론트가 신규
-사용자에게 온보딩 페이지를, 기존 사용자에게 홈을 즉시 보여줄 수
-있게 한다.
-"""
 from fastapi import APIRouter, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,9 +29,6 @@ async def kakao_callback(code: str, db: AsyncSession = Depends(get_db)):
     user = await upsert_kakao_user(profile, db)
     jwt_token = create_access_token(user.id)
 
-    # Tell the SPA whether this is a brand-new user (needs onboarding) or a
-    # returning one (go straight to home). is_new = True iff birth_date is
-    # still NULL — that's the first onboarding step.
     is_new = user.birth_date is None
 
     redirect = (

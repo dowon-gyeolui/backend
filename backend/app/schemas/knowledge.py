@@ -1,10 +1,3 @@
-"""원전 청크 적재/검색 입출력 스키마.
-
-- KnowledgeChunkCreate / KnowledgeChunkResponse: 단일 청크 입출력
-- KnowledgeIngestRequest / KnowledgeIngestResponse: 원문 일괄 적재
-- KnowledgeQuery / KnowledgeRetrievalResult: 검색 입력과 결과
-"""
-
 from datetime import datetime
 from typing import Literal, Optional
 
@@ -12,8 +5,6 @@ from pydantic import BaseModel, Field
 
 
 class KnowledgeChunkCreate(BaseModel):
-    """Input for manually creating a knowledge chunk (dev ingestion via Swagger)."""
-
     source_type: str = Field(
         examples=["사주"],
         description="소스 유형: '사주' | '자미두수'",
@@ -34,8 +25,6 @@ class KnowledgeChunkCreate(BaseModel):
 
 
 class KnowledgeChunkResponse(BaseModel):
-    """A single stored knowledge chunk, returned by the API."""
-
     id: int
     source_type: str
     source_title: str
@@ -56,8 +45,6 @@ class KnowledgeChunkResponse(BaseModel):
 
 
 class KnowledgeQuery(BaseModel):
-    """Retrieval query — keyword + optional filters."""
-
     query: str = Field(
         examples=["갑목 년주"],
         description="검색 키워드 (내용 또는 주제 대상)",
@@ -77,8 +64,6 @@ class KnowledgeQuery(BaseModel):
 
 
 class KnowledgeIngestRequest(BaseModel):
-    """Input for POST /knowledge/ingest — raw text that will be chunked."""
-
     source_type: str = Field(examples=["사주"])
     source_title: str = Field(examples=["적천수"])
     source_author: Optional[str] = Field(default=None, examples=["유백온"])
@@ -102,8 +87,6 @@ class KnowledgeIngestRequest(BaseModel):
 
 
 class KnowledgeIngestResponse(BaseModel):
-    """Result of an ingestion call."""
-
     total: int  # total chunks produced by the chunker
     created: int  # newly inserted
     skipped_duplicate: int  # skipped because content_hash already existed
@@ -111,15 +94,6 @@ class KnowledgeIngestResponse(BaseModel):
 
 
 class KnowledgeRetrievalResult(BaseModel):
-    """One item in a retrieval response — chunk + source evidence metadata.
-
-    source_citation is the human-readable reference string intended to be
-    displayed in the UI as direct evidence (e.g. "《적천수》 3장 - 년주론").
-
-    relevance_score is a placeholder (1.0) until vector similarity is live.
-    match_reason will become "vector_similarity" once pgvector is active.
-    """
-
     chunk: KnowledgeChunkResponse
     relevance_score: float = Field(
         ge=0.0, le=1.0,
@@ -127,5 +101,3 @@ class KnowledgeRetrievalResult(BaseModel):
     )
     match_reason: Literal["keyword_match", "topic_filter", "vector_similarity"]
     source_citation: str
-    # e.g. "《적천수》 제3장 오행론 - 목화통명"
-    # Shown to the user as: "출처: 《적천수》 제3장 오행론"

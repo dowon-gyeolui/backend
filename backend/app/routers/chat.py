@@ -1,18 +1,3 @@
-"""채팅 REST + 폴링 엔드포인트.
-
-프론트는 상대방의 user_id(peer_id)로 대화를 식별하고,
-서버 측에서 내부적으로 canonical ChatThread row 로 변환한다.
-
-폴링 패턴:
-  GET /chat/with/{peer_id}/messages?after_id=<last_seen_id>
-  → after_id 보다 큰 id 만 반환 → 클라가 2~3초마다 append 가능
-
-메시지 전송 시 chat_moderation 3-layer 파이프라인을 통과해야 하며,
-차단 시 UserStrike 가 적재되고 누적 임계치를 넘으면 24h 채팅 정지.
-이미지/음성 첨부는 storage.upload_chat_image/audio 로 업로드 후
-media_url + media_type 으로 저장된다.
-"""
-
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
@@ -46,11 +31,6 @@ from app.services.storage import (
     upload_chat_image,
 )
 
-
-# Strike escalation policy.
-#   1~2 strikes: warn-only (block message, no suspension)
-#   3+ strikes within rolling 24h: 24-hour chat suspension
-# Tunables here so we can iterate without touching the moderation logic.
 _STRIKE_WINDOW = timedelta(hours=24)
 _SUSPENSION_THRESHOLD = 3
 _SUSPENSION_DURATION = timedelta(hours=24)
@@ -62,8 +42,6 @@ async def _check_chat_active(user: User) -> None:
     until = user.chat_suspended_until
     if until is None:
         return
-    # SQLite returns naive datetimes; treat them as UTC. Postgres returns
-    # tz-aware. Normalize so the comparison is meaningful.
     if until.tzinfo is None:
         until = until.replace(tzinfo=timezone.utc)
     if until <= now:
@@ -83,14 +61,11 @@ async def _enforce_chat_moderation(
     on block — caller short-circuits the message send.
     """
     if not (content or "").strip():
-        return  # empty content; let the upstream Pydantic validator handle
-
+        return  
     result = moderate_chat_message(content)
     if result.ok:
         return
 
-    # Record the strike before raising so the count is durable even if
-    # the request is retried.
     db.add(
         UserStrike(
             user_id=user.id,
@@ -99,8 +74,6 @@ async def _enforce_chat_moderation(
         )
     )
 
-    # Count recent strikes inside the rolling window. We commit after
-    # the count so the just-added strike is included.
     await db.commit()
 
     cutoff = datetime.now(timezone.utc) - _STRIKE_WINDOW
@@ -157,9 +130,6 @@ async def _get_or_create_thread(
         )
     ).scalar_one_or_none()
     if existing is not None:
-        # If the current user previously left this thread, sending a new
-        # message brings it back. Reset their leave flag so the row
-        # reappears in /chat/threads.
         if current_user_id == existing.user_a_id and existing.user_a_left:
             existing.user_a_left = False
         elif current_user_id == existing.user_b_id and existing.user_b_left:
@@ -204,8 +174,6 @@ async def list_threads(
     Threads where the current user has flagged left=True are excluded;
     the OTHER user keeps seeing the thread until they leave too.
     """
-    # SQL-level filter for the user's leave flag — saves us from
-    # post-filtering and from joining when the user has many threads.
     left_filter = or_(
         and_(
             ChatThread.user_a_id == current_user.id,
@@ -350,7 +318,6 @@ async def mark_thread_read(
         )
     ).scalar_one_or_none()
     if thread is None:
-        # Nothing to mark — the thread will be created on first message send.
         return None
 
     latest_id = (
@@ -405,7 +372,6 @@ async def leave_thread(
         peer_left = bool(thread.user_a_left)
 
     if peer_left:
-        # Both sides have left — orphan thread, hard-delete it + messages.
         await db.execute(delete(Message).where(Message.thread_id == thread.id))
         await db.delete(thread)
 
@@ -488,7 +454,6 @@ async def send_message_to_peer(
         content=body.content,
     )
     db.add(msg)
-    # Bump the thread's updated_at so it floats to the top of the thread list.
     thread.updated_at = msg.created_at or thread.updated_at
     await db.commit()
     await db.refresh(msg)
@@ -528,8 +493,6 @@ async def send_media_message(
         )
 
     await _check_chat_active(current_user)
-    # Caption 만 텍스트 모더레이션 — 이미지·오디오 자체 모더레이션은
-    # 향후 별도 흐름(Rekognition 영상)으로 이관.
     if caption:
         await _enforce_chat_moderation(current_user, caption, db)
 

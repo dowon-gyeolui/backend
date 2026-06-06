@@ -1,14 +1,3 @@
-"""궁합/매칭/데이트 추천 응답 스키마.
-
-- CompatibilityScore: 단순 점수(0~100) + 요약 한 줄
-- CompatibilityReport: 채팅 헤더 drawer 용 간단 요약
-- DestinyAnalysis: 운명의 실타래 5섹션 풀이
-- DateRecommendation / DateSpot: 데이트 코스 추천
-- MatchCandidate: 매칭 카드 한 장의 공개 정보(블러 여부 포함)
-- DailyMatchPack: 오늘의 4-슬롯 묶음
-- HistoryMatchEntry: 누적 매칭 히스토리 한 행
-"""
-
 from datetime import datetime
 from typing import Literal, Optional
 
@@ -16,8 +5,6 @@ from pydantic import BaseModel
 
 
 class CompatibilityScore(BaseModel):
-    """Pairwise compatibility score between two users."""
-
     user_a_id: int
     user_b_id: int
     score: int  # 0~100
@@ -26,8 +13,6 @@ class CompatibilityScore(BaseModel):
 
 
 class DestinyAnalysis(BaseModel):
-    """운명의 실타래 — 두 사람 사주의 심층 비교 (5 섹션)."""
-
     user_a_id: int
     user_b_id: int
     nickname_a: Optional[str] = None
@@ -47,8 +32,6 @@ class DateSpot(BaseModel):
 
 
 class DateRecommendation(BaseModel):
-    """LLM-generated date spot suggestions for a paid pair."""
-
     user_a_id: int
     user_b_id: int
     nickname_a: Optional[str] = None
@@ -60,43 +43,18 @@ class DateRecommendation(BaseModel):
 
 
 class CompatibilityReport(BaseModel):
-    """Drawer-style 운명 분석 리포트 for the chat header.
-
-    Two narrative bullets (synergy + caution) + 3 hashtag keywords feed the
-    Figma drawer at node 37:1657. CTA gating is a frontend concern.
-    """
-
     user_a_id: int
     user_b_id: int
     nickname_a: Optional[str] = None
     nickname_b: Optional[str] = None
     score: int  # 0~100
 
-    # First line is the synergy/strength; second is the caution/risk. Two
-    # bullets line up with Figma's two ✦-prefixed paragraphs.
     summary_lines: list[str]
 
-    # Three hashtag-style chips (e.g. "#금의_기운", "#찰떡궁합", "#솔직한_대화")
     keywords: list[str]
 
 
 class MatchCandidate(BaseModel):
-    """One match candidate shown as a profile card.
-
-    Fields always visible:
-      user_id, score, nickname, age, gender, is_blinded
-
-    Free tier (is_blinded=True):
-      photo_url = None            — 사진 블라인드(모자이크 대체)
-      birth_year = None           — 정확한 연도 비공개
-      dominant_element = None
-
-    Paid tier (is_blinded=False):
-      photo_url                   — 본 사진 공개
-      birth_year                  — 생년 노출
-      dominant_element            — 주요 오행 공개로 대화 맥락 제공
-    """
-
     user_id: int
     score: int  # 0~100
     nickname: Optional[str] = None
@@ -110,25 +68,10 @@ class MatchCandidate(BaseModel):
     dominant_element: Optional[str] = None
     mbti: Optional[str] = None
 
-    # ZAMI 공식 얼굴 인증 뱃지 표시용 — 후보의 메인 사진이 strict
-    # face check 를 통과했는지. 매칭 카드에서 사용자에게 신뢰도
-    # 시그널로 노출됨.
     is_face_verified: bool = False
 
 
 class DailyMatchSlot(BaseModel):
-    """One slot within today's 4-card pack.
-
-    Slot policy (mirrored client-side):
-      0 → 사주 무료, 즉시 unlock.
-      1 → 자미두수 유료, 즉시 unlock 하지만 무료 사용자는 사진 블라인드.
-      2 → 사주 무료, assigned_at + 24h 후 unlock.
-      3 → 자미두수 유료, assigned_at + 24h 후 unlock + 무료 블라인드.
-
-    `is_locked` 는 24h 카운트다운 잠금. `is_blinded` 는 결제 잠금. 둘은
-    독립이며 클라이언트에서 잠금/블러를 따로 표현한다.
-    """
-
     slot_index: int
     match_basis: Literal["saju", "jamidusu"]
     candidate: MatchCandidate
@@ -139,16 +82,12 @@ class DailyMatchSlot(BaseModel):
 
 
 class DailyMatchPack(BaseModel):
-    """Today's 4-card pack response."""
-
     assigned_at: datetime
     next_cycle_at: datetime  # assigned_at + 48h
     slots: list[DailyMatchSlot]  # length always 4 (0..3)
 
 
 class HistoryMatchEntry(BaseModel):
-    """One row in the cumulative match history list."""
-
     candidate: MatchCandidate
     slot_index: int
     match_basis: Literal["saju", "jamidusu"]
