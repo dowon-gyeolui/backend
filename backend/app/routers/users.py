@@ -28,7 +28,6 @@ router = APIRouter()
 async def get_my_profile(current_user: User = Depends(get_current_user)):
     return current_user
 
-
 @router.get("/{user_id}/public-profile", response_model=PublicProfileResponse)
 async def get_public_profile(
     user_id: int,

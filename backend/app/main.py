@@ -11,6 +11,8 @@ from app.routers import (
     chat,
     compatibility,
     knowledge,
+    matching,
+    payments,
     recommendations,
     reports,
     saju,
@@ -71,6 +73,8 @@ app.include_router(recommendations.router, prefix="/recommendations", tags=["rec
 app.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
 app.include_router(reports.router, prefix="/reports", tags=["reports"])
+app.include_router(payments.router, prefix="/payments", tags=["payments"])
+app.include_router(matching.router, prefix="/matches", tags=["matches"])
 
 
 @app.get("/health", tags=["system"])

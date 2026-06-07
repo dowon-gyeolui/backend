@@ -5,6 +5,7 @@ from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.recommendation import PairRecommendation, RecommendationCard
+from app.services import matching as matching_service
 from app.services import recommendations as rec_service
 
 router = APIRouter()
@@ -36,10 +37,10 @@ async def get_pair_recommendation(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not current_user.is_paid:
+    if not await matching_service.has_unlocked(current_user.id, target_user_id, db):
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="유료 기능입니다. 상세 추천은 결제 후 이용하실 수 있습니다.",
+            detail="먼저 이 인연의 카드를 열람해주세요.",
         )
     if target_user_id == current_user.id:
         raise HTTPException(

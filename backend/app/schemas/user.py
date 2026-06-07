@@ -104,6 +104,7 @@ class UserProfileResponse(BaseModel):
     religion: Optional[str] = None
 
     is_paid: bool
+    star_balance : int
     created_at: datetime
     updated_at: datetime
 

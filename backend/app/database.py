@@ -36,6 +36,7 @@ _DEV_COLUMNS: list[tuple[str, str, str]] = [
     ("chat_threads", "user_b_left", "BOOLEAN NOT NULL DEFAULT FALSE"),
     ("users", "chat_suspended_until", "TIMESTAMP"),
     ("user_photos", "is_face_verified", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("users",  "star_balance", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 async def _dev_migrate_sqlite(conn) -> None:

@@ -35,6 +35,7 @@ class User(Base):
     drinking = Column(String(20), nullable=True)   
     religion = Column(String(20), nullable=True)
     is_paid = Column(Boolean, default=False, nullable=False)
+    star_balance = Column(Integer, default = 0, nullable = False)
     chat_suspended_until = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)

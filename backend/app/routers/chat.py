@@ -25,6 +25,7 @@ from app.schemas.chat import (
     MessageOut,
 )
 from app.services.chat_moderation import moderate_chat_message
+from app.services.matching import has_unlocked
 from app.services.storage import (
     StorageNotConfiguredError,
     upload_chat_audio,
@@ -52,6 +53,15 @@ async def _check_chat_active(user: User) -> None:
         status_code=status.HTTP_403_FORBIDDEN,
         detail=f"부적절한 메시지 누적으로 채팅이 일시 정지됐어요. {hours}시간 후 다시 이용 가능해요.",
     )
+
+
+async def _require_unlocked(user: User, peer_id: int, db: AsyncSession) -> None:
+    """카드를 열람한 상대와만 채팅 가능 (PRD 6.2). 선톡하는 쪽이 열람자다."""
+    if not await has_unlocked(user.id, peer_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="카드를 열람한 상대와만 채팅할 수 있어요.",
+        )
 
 
 async def _enforce_chat_moderation(
@@ -442,7 +452,8 @@ async def send_message_to_peer(
             detail=f"user_id={peer_id} not found",
         )
 
-    # 자동 모더레이션: 정지 상태 / 부적절 콘텐츠 둘 다 여기서 차단.
+    # 카드 열람한 상대와만 채팅. 그 다음 자동 모더레이션(정지/부적절 콘텐츠).
+    await _require_unlocked(current_user, peer_id, db)
     await _check_chat_active(current_user)
     await _enforce_chat_moderation(current_user, body.content, db)
 
@@ -492,6 +503,7 @@ async def send_media_message(
             detail=f"user_id={peer_id} not found",
         )
 
+    await _require_unlocked(current_user, peer_id, db)
     await _check_chat_active(current_user)
     if caption:
         await _enforce_chat_moderation(current_user, caption, db)

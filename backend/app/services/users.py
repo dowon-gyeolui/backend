@@ -1,15 +1,3 @@
-"""사용자 도메인 서비스.
-
-- set_birth_data / update_birth_data: 출생 데이터 등록/부분 수정
-- update_profile: 닉네임/한줄소개/기본정보 PATCH
-- build_public_profile: 공개 프로필 조립 (무료 티어 사진 블러)
-- delete_user_account: 탈퇴 — 채팅/매칭/사진/신고/스트라이크 정리 +
-  Cloudinary 사진 삭제 + 카카오 unlink 호출
-
-라우터(routers/users.py)는 입력 검증·인증만 책임지고 도메인 처리는
-이 모듈로 위임한다.
-"""
-
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,16 +49,6 @@ async def patch_profile(user: User, data: ProfileUpdate, db: AsyncSession) -> Us
 async def build_public_profile(
     viewer: User, target: User, db: AsyncSession,
 ) -> PublicProfileResponse:
-    """Build a viewer-aware public profile of `target`.
-
-    Free-tier viewers (is_paid=False) get the photo blinded — the field is
-    set to None and is_blinded=True so the frontend can render a locked
-    teaser. Paid viewers see the photo. Sensitive fields (kakao_id, exact
-    birth_date/time, is_paid) are never returned.
-
-    is_face_verified — target 의 메인 사진이 strict face check 통과 시
-    True. 프론트가 ZAMI 공식 인증 뱃지 노출 여부 판단.
-    """
     from app.services import compatibility as compatibility_service
     from app.services.saju import calculate as calculate_saju
     from app.models.photo import UserPhoto
@@ -79,7 +57,6 @@ async def build_public_profile(
 
     age = compatibility_service._compute_age(target.birth_date)
 
-    # 메인 사진의 ZAMI 공식 인증 통과 여부.
     primary_photo = (
         await db.execute(
             select(UserPhoto)
@@ -101,7 +78,6 @@ async def build_public_profile(
             )
             day_pillar = saju.pillars[2].combined
         except Exception:
-            # Saju computation is best-effort — never fail the profile call.
             pass
 
     score: int | None = None
