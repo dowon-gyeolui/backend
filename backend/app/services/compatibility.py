@@ -339,14 +339,37 @@ def build_report(user_a: User, user_b: User) -> CompatibilityReport:
         _theme_keyword(stem_rel, branch_rel, a_dom, b_dom),
     ]
 
+    # AI 우선 — 실패 시 위 규칙 기반 summary_lines/keywords 로 fallback.
+    ai = None
+    try:
+        from app.services.llm.interpret import generate_compatibility_report
+
+        ai = generate_compatibility_report(
+            score=score_obj.score,
+            user_a_info={
+                "nickname": user_a.nickname,
+                "day_pillar": a_day.combined,
+                "dominant_element": _ELEMENT_KO.get(a_dom or ""),
+                "mbti": user_a.mbti,
+            },
+            user_b_info={
+                "nickname": user_b.nickname,
+                "day_pillar": b_day.combined,
+                "dominant_element": _ELEMENT_KO.get(b_dom or ""),
+                "mbti": user_b.mbti,
+            },
+        )
+    except Exception:
+        ai = None
+
     return CompatibilityReport(
         user_a_id=user_a.id,
         user_b_id=user_b.id,
         nickname_a=user_a.nickname,
         nickname_b=user_b.nickname,
         score=score_obj.score,
-        summary_lines=[synergy, caution],
-        keywords=keywords,
+        summary_lines=ai["summary_lines"] if ai else [synergy, caution],
+        keywords=ai["keywords"] if ai else keywords,
     )
 
 

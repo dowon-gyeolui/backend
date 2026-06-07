@@ -787,3 +787,68 @@ def generate_daily_text(
         return text or None
     except Exception:
         return None
+
+
+# --- 궁합 리포트 (채팅 드로어) ---------------------------------------
+
+_COMPAT_REPORT_SYSTEM_PROMPT = (
+    "당신은 두 사용자의 사주를 비교해 '궁합 요약'을 한국어로 작성하는 "
+    "다정한 데이팅 코치입니다.\n"
+    "\n"
+    "톤·스타일:\n"
+    "- 다정한 존댓말. 단정·예언·저주 금지. 건강·수명·파탄 단정 금지.\n"
+    "- 명령형 '~해라', 격식체 '~십시오', 반말 모두 금지.\n"
+    "\n"
+    "공통 규칙:\n"
+    + _PLAIN_KOREAN_RULES +
+    "- 아래 [궁합 입력]에 적힌 두 사람 정보만 근거로 쓰고, 없는 사실을 지어내지 마세요.\n"
+    "- summary_lines: 2개. 1번은 '잘 맞는 점', 2번은 '살짝 주의할 점'. 각 한 문장(30~70자).\n"
+    "- keywords: 3개. '#' 로 시작하는 짧은 해시태그 (예: #성장하는인연, #케미좋음).\n"
+    "\n"
+    "반드시 아래 JSON 스키마만 출력. 다른 설명·도입부·마크다운 금지:\n"
+    "{\n"
+    '  "summary_lines": ["잘 맞는 점 한 문장", "주의할 점 한 문장"],\n'
+    '  "keywords": ["#키워드1", "#키워드2", "#키워드3"]\n'
+    "}\n"
+)
+
+
+def generate_compatibility_report(
+    *,
+    score: int,
+    user_a_info: dict,
+    user_b_info: dict,
+    model: str = _MODEL,
+) -> Optional[dict[str, Any]]:
+    """두 사람 사주 비교 → 궁합 요약(summary_lines 2개 + keywords 3개). 실패 시 None."""
+    nick_a = user_a_info.get("nickname") or "사용자A"
+    nick_b = user_b_info.get("nickname") or "사용자B"
+    user_input = "\n".join([
+        "[궁합 입력]",
+        f"- 궁합 점수: {score} / 100",
+        f"- {nick_a}: 일주 {user_a_info.get('day_pillar')}"
+        f" · 주요 오행 {user_a_info.get('dominant_element') or '미상'}"
+        f" · MBTI {user_a_info.get('mbti') or '미상'}",
+        f"- {nick_b}: 일주 {user_b_info.get('day_pillar')}"
+        f" · 주요 오행 {user_b_info.get('dominant_element') or '미상'}"
+        f" · MBTI {user_b_info.get('mbti') or '미상'}",
+        "",
+        f"위 정보로 두 분({nick_a}, {nick_b})의 궁합 요약 JSON 을 작성하십시오.",
+    ])
+    try:
+        resp = _client().responses.create(
+            model=model,
+            instructions=_COMPAT_REPORT_SYSTEM_PROMPT,
+            input=user_input,
+            max_output_tokens=600,
+        )
+        parsed = _parse_pair_json(_extract_output_text(resp))
+        if parsed is None:
+            return None
+        lines = [str(x).strip() for x in (parsed.get("summary_lines") or []) if str(x).strip()]
+        kws = [str(x).strip() for x in (parsed.get("keywords") or []) if str(x).strip()]
+        if not lines or not kws:
+            return None
+        return {"summary_lines": lines, "keywords": kws}
+    except Exception:
+        return None

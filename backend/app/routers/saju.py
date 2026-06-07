@@ -67,12 +67,6 @@ async def get_my_today_fortune(
         relation=fortune.relation,
         element_today=fortune.element_today,
         score=fortune.score,
-        headline=fortune.headline,
-        person_type=fortune.person_type,
-        timing=fortune.timing,
-        place=fortune.place,
-        caution=fortune.caution,
-        lucky_color=fortune.lucky_color,
         badges=fortune.badges,
     )
 

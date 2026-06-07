@@ -50,11 +50,9 @@ class TodayFortune:
     element_today: str            # 오늘 일간의 오행 한국어
     score: int                    # 1~5 별점
     # 세부 섹션 — 프론트가 펼쳐 보여줄 수 있게 분리.
-    headline: str = ""            # 한 줄 요약 (반말)
     person_type: str = ""         # 만나는 사람 성향
     timing: str = ""              # 좋은 시간대
     place: str = ""               # 좋은 장소 분위기
-    caution: str = ""             # 주의사항
     lucky_color: str = ""         # 행운 색상
     badges: list[str] = field(default_factory=list)  # ['도화 발동', '천을귀인'] 같은 강조 칩
 
@@ -266,11 +264,9 @@ def compute_today_fortune(user: User) -> Optional[TodayFortune]:
         relation=relation,
         element_today=element_today_ko,
         score=score,
-        headline=headline,
         person_type=person_type,
         timing=timing,
         place=place,
-        caution=caution_text,
         lucky_color=lucky_color,
         badges=badges,
     )

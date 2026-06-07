@@ -68,12 +68,6 @@ class TodayFortuneResponse(BaseModel):
     relation: str
     element_today: str
     score: int
-    headline: str = ""
-    person_type: str = ""
-    timing: str = ""
-    place: str = ""
-    caution: str = ""
-    lucky_color: str = ""
     badges: list[str] = []
 
 
