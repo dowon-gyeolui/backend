@@ -1,8 +1,8 @@
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.card_unlock import CardUnlock
 from app.models.chat import ChatThread, Message
-from app.models.daily_match import DailyMatch
 from app.models.moderation import UserStrike
 from app.models.photo import UserPhoto
 from app.models.report import Report
@@ -124,9 +124,8 @@ async def delete_account(user: User, db: AsyncSession) -> None:
       - chat_threads.user_a_id / user_b_id  + their messages
       - messages.sender_id (defensive)
       - user_photos.user_id
-      - daily_matches.user_id  AND .candidate_id (the user might have
-        been someone else's daily match, those rows must go too or the
-        OTHER user's history page would 500 on hydrate)
+      - card_unlocks.user_id  AND .candidate_id (the user might have
+        been someone else's unlocked card, those rows must go too)
       - reports.reporter_id / reported_id
 
     Re-registration with the same kakao_id is fine — the unique constraint
@@ -164,13 +163,13 @@ async def delete_account(user: User, db: AsyncSession) -> None:
             delete(UserPhoto).where(UserPhoto.user_id == user.id)
         )
 
-    # 4) Daily-match rows: both this user's own pack AND any pack where
-    #    they were assigned to someone else as a candidate.
+    # 4) Card unlocks: this user's own unlocks AND any where they were the
+    #    unlocked candidate.
     await db.execute(
-        delete(DailyMatch).where(
+        delete(CardUnlock).where(
             or_(
-                DailyMatch.user_id == user.id,
-                DailyMatch.candidate_id == user.id,
+                CardUnlock.user_id == user.id,
+                CardUnlock.candidate_id == user.id,
             )
         )
     )

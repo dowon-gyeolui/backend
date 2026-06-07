@@ -1,5 +1,4 @@
-from datetime import datetime
-from typing import Literal, Optional
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -39,29 +38,3 @@ class MatchCandidate(BaseModel):
     mbti: Optional[str] = None
 
     is_face_verified: bool = False
-
-
-class DailyMatchSlot(BaseModel):
-    slot_index: int
-    match_basis: Literal["saju", "jamidusu"]
-    candidate: MatchCandidate
-    assigned_at: datetime
-    unlock_at: datetime
-    is_locked: bool          # 카운트다운 잠금 (24h 미경과)
-    requires_payment: bool   # 슬롯 자체가 유료 (slot 1,3)
-
-
-class DailyMatchPack(BaseModel):
-    assigned_at: datetime
-    next_cycle_at: datetime  # assigned_at + 48h
-    slots: list[DailyMatchSlot]  # length always 4 (0..3)
-
-
-class HistoryMatchEntry(BaseModel):
-    candidate: MatchCandidate
-    slot_index: int
-    match_basis: Literal["saju", "jamidusu"]
-    assigned_at: datetime
-    unlock_at: datetime
-    is_locked: bool
-    requires_payment: bool

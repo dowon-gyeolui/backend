@@ -4,13 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
-from app.schemas.compatibility import (
-    CompatibilityReport,
-    CompatibilityScore,
-    DailyMatchPack,
-    HistoryMatchEntry,
-    MatchCandidate,
-)
+from app.schemas.compatibility import CompatibilityReport
 from app.services import compatibility as compatibility_service
 
 router = APIRouter()
@@ -23,30 +17,6 @@ def _require_birth_data(user: User, *, is_self: bool) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"{who} 생년월일이 먼저 입력되어야 합니다.",
         )
-
-
-@router.get("/score/{target_user_id}", response_model=CompatibilityScore)
-async def get_compatibility_score(
-    target_user_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    if target_user_id == current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="자기 자신과의 궁합은 계산하지 않습니다.",
-        )
-    _require_birth_data(current_user, is_self=True)
-
-    target = await db.get(User, target_user_id)
-    if target is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"user_id={target_user_id} 를 찾을 수 없습니다.",
-        )
-    _require_birth_data(target, is_self=False)
-
-    return compatibility_service.calculate(current_user, target)
 
 
 @router.get("/report/{peer_id}", response_model=CompatibilityReport)
@@ -76,52 +46,3 @@ async def get_compatibility_report(
     _require_birth_data(target, is_self=False)
 
     return compatibility_service.build_report(current_user, target)
-
-
-@router.get("/matches", response_model=list[MatchCandidate])
-async def get_matches(
-    top_k: int = 5,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _require_birth_data(current_user, is_self=True)
-    if top_k < 1 or top_k > 20:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="top_k 는 1~20 사이여야 합니다.",
-        )
-    return await compatibility_service.find_matches(current_user, db, top_k=top_k)
-
-
-@router.get("/today", response_model=DailyMatchPack)
-async def get_today_pack(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """오늘의 매칭 4-슬롯 카드 팩.
-
-    슬롯 정책:
-      0 → 사주 무료 (즉시 unlock)
-      1 → 자미두수 유료 (즉시 unlock 가능, 무료 사용자는 사진 블라인드)
-      2 → 사주 무료 (assigned_at + 24h 후 unlock)
-      3 → 자미두수 유료 (assigned_at + 24h 후 unlock + 무료 블라인드)
-
-    사이클(=4장 한 묶음)이 48시간 지났으면 자동으로 새 4장을 배정한다.
-    """
-    _require_birth_data(current_user, is_self=True)
-    return await compatibility_service.get_or_assign_today_pack(current_user, db)
-
-
-@router.get("/history", response_model=list[HistoryMatchEntry])
-async def get_match_history(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """누적 매칭 히스토리 — 그동안 노출됐던 모든 후보.
-
-    candidate_id 기준 dedup, 최근 노출 우선. 잠금 여부는 호출 시점의
-    현재 시간으로 재계산되므로, 어제 슬롯 2/3 으로 배정된 후보가 오늘
-    들어와 보면 자동으로 unlock 상태로 보인다.
-    """
-    _require_birth_data(current_user, is_self=True)
-    return await compatibility_service.list_match_history(current_user, db)
