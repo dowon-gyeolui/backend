@@ -30,9 +30,6 @@ from app.schemas.compatibility import (
     CompatibilityScore,
     DailyMatchPack,
     DailyMatchSlot,
-    DateRecommendation,
-    DateSpot,
-    DestinyAnalysis,
     HistoryMatchEntry,
     MatchCandidate,
 )
@@ -447,118 +444,6 @@ async def _is_primary_face_verified(user: User, db: AsyncSession) -> bool:
         )
     ).scalar_one_or_none()
     return bool(primary and primary.is_face_verified)
-
-
-# --- Date recommendation ----------------------------------------------
-
-def build_date_recommendation(user_a: User, user_b: User) -> DateRecommendation:
-    """Build a DateRecommendation for a paid pair.
-
-    Pulls saju metrics for both users, calls the LLM with their dominant
-    elements + day pillars + MBTI, and returns the structured spots.
-    On LLM failure returns the same shape with status='pending' so the
-    UI can render a friendly fallback.
-    """
-    from app.services.llm.interpret import generate_date_recommendation
-
-    saju_a = calculate_saju(user_a)
-    saju_b = calculate_saju(user_b)
-    a_dom = _dominant_element(saju_a.element_profile)
-    b_dom = _dominant_element(saju_b.element_profile)
-    score_obj = calculate(user_a, user_b)
-
-    sections = generate_date_recommendation(
-        score=score_obj.score,
-        user_a_info={
-            "nickname": user_a.nickname,
-            "day_pillar": saju_a.pillars[2].combined,
-            "dominant_element": _ELEMENT_KO.get(a_dom or ""),
-            "gender": user_a.gender,
-            "mbti": user_a.mbti,
-        },
-        user_b_info={
-            "nickname": user_b.nickname,
-            "day_pillar": saju_b.pillars[2].combined,
-            "dominant_element": _ELEMENT_KO.get(b_dom or ""),
-            "gender": user_b.gender,
-            "mbti": user_b.mbti,
-        },
-    )
-
-    out = DateRecommendation(
-        user_a_id=user_a.id,
-        user_b_id=user_b.id,
-        nickname_a=user_a.nickname,
-        nickname_b=user_b.nickname,
-        score=score_obj.score,
-    )
-    if sections is None:
-        return out
-
-    out.overview = sections.get("overview", "")
-    out.spots = [
-        DateSpot(title=s["title"], description=s["description"])
-        for s in sections.get("spots", [])
-    ]
-    if out.overview or out.spots:
-        out.interpretation_status = "ready"
-    return out
-
-
-
-def build_destiny_analysis(user_a: User, user_b: User) -> DestinyAnalysis:
-    """운명의 실타래 — 두 사람 사주를 직접 비교한 5 섹션 풀이."""
-    from app.services.llm.interpret import generate_destiny_analysis
-
-    saju_a = calculate_saju(user_a)
-    saju_b = calculate_saju(user_b)
-    a_dom = _dominant_element(saju_a.element_profile)
-    b_dom = _dominant_element(saju_b.element_profile)
-    score_obj = calculate(user_a, user_b)
-
-    a_day = saju_a.pillars[2]
-    b_day = saju_b.pillars[2]
-    a_stem_el = _STEM_ELEMENT.get(a_day.stem)
-    b_stem_el = _STEM_ELEMENT.get(b_day.stem)
-
-    sections = generate_destiny_analysis(
-        score=score_obj.score,
-        user_a_info={
-            "nickname": user_a.nickname,
-            "day_pillar": a_day.combined,
-            "day_stem_element": _ELEMENT_KO.get(a_stem_el or ""),
-            "dominant_element": _ELEMENT_KO.get(a_dom or ""),
-            "gender": user_a.gender,
-            "mbti": user_a.mbti,
-        },
-        user_b_info={
-            "nickname": user_b.nickname,
-            "day_pillar": b_day.combined,
-            "day_stem_element": _ELEMENT_KO.get(b_stem_el or ""),
-            "dominant_element": _ELEMENT_KO.get(b_dom or ""),
-            "gender": user_b.gender,
-            "mbti": user_b.mbti,
-        },
-    )
-
-    out = DestinyAnalysis(
-        user_a_id=user_a.id,
-        user_b_id=user_b.id,
-        nickname_a=user_a.nickname,
-        nickname_b=user_b.nickname,
-        score=score_obj.score,
-    )
-    if sections is None:
-        return out
-
-    out.intro = sections.get("intro", "")
-    out.personality = sections.get("personality", "")
-    out.love_style = sections.get("love_style", "")
-    out.caution = sections.get("caution", "")
-    out.longterm = sections.get("longterm", "")
-    if any([out.intro, out.personality, out.love_style, out.caution, out.longterm]):
-        out.interpretation_status = "ready"
-    return out
 
 
 # --- Daily 4-slot match assignment ----------------------------------------

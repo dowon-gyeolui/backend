@@ -12,36 +12,6 @@ class CompatibilityScore(BaseModel):
     summary: Optional[str] = None
 
 
-class DestinyAnalysis(BaseModel):
-    user_a_id: int
-    user_b_id: int
-    nickname_a: Optional[str] = None
-    nickname_b: Optional[str] = None
-    score: int
-    intro: str = ""
-    personality: str = ""
-    love_style: str = ""
-    caution: str = ""
-    longterm: str = ""
-    interpretation_status: str = "pending"  # "pending" | "ready"
-
-
-class DateSpot(BaseModel):
-    title: str
-    description: str
-
-
-class DateRecommendation(BaseModel):
-    user_a_id: int
-    user_b_id: int
-    nickname_a: Optional[str] = None
-    nickname_b: Optional[str] = None
-    score: int
-    overview: str = ""
-    spots: list[DateSpot] = []
-    interpretation_status: str = "pending"  # "pending" | "ready"
-
-
 class CompatibilityReport(BaseModel):
     user_a_id: int
     user_b_id: int
