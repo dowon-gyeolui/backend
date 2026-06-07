@@ -1,19 +1,9 @@
-"""오늘의 행동 가이드 — 사주 기반 동적 행동 추천 (3줄 산문).
-
-인연운(fortune.py)과 차별화:
-  - 인연운: "오늘 어떤 만남/장소/시간이 좋은가" (운세 관점)
-  - 행동 가이드: "오늘 어떻게 입고 / 어떤 태도로 / 어떤 마음으로
-    임할까" (행동 관점)
-
-사용자 일간과 오늘 일간의 십성 관계 + 용신 추정으로 옷차림 톤,
-태도 제안, 마음가짐을 골라 자연스러운 3줄 산문으로 합쳐 반환한다.
-LLM 호출 없음. 닉네임은 성을 떼고 받침에 따라 야/아 호칭을 붙인다.
-"""
-
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 from app.services.saju import calculate as calculate_saju
@@ -26,6 +16,8 @@ from app.services.saju_enrichment import (
     korean_polite_name,
     stem_element,
 )
+from app.services.daily_ai import get_or_create_daily_text
+
 
 _KST = timezone(timedelta(hours=9))
 
@@ -117,4 +109,16 @@ def build_action_guide(user: User) -> Optional[dict]:
         f'{mood}."'
     )
 
-    return {"text": text}
+    signal = (
+        f"오늘의 십성: {relation} / 옷차림: {fashion}"
+        f" / 태도: {attitude} / 마음가짐: {mood}"
+    )
+
+    return {"text": text, "signal": signal}
+
+async def get_action_guide_ai(user: User, db: AsyncSession) -> Optional[dict]:
+    guide = build_action_guide(user)
+    if guide is None:
+        return None
+    ai = await get_or_create_daily_text(user, "action_guide", guide["signal"], db)
+    return {"text": ai or guide["text"]}

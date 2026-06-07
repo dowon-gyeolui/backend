@@ -1,18 +1,3 @@
-"""LLM 기반 풀이 레이어.
-
-역할: retrieval 이 가져온 원전 구절들을 사용자 사주에 맞춘 간결한 한국어
-해석으로 정리한다. LLM 은 어디까지나 포매터이며 진실의 원천이 아니다 —
-제공된 원전 구절만을 grounding 으로 사용해야 한다.
-
-계약:
-  - 입력: 사주 결과 + retrieval 청크 목록(인용 포함)
-  - 출력: 한국어 2~3문장 또는 실패 시 None
-  - 제공된 구절 밖의 내용은 만들지 않음
-  - 건강/재물/수명 단정 같은 결정론적 예측 금지
-
-비용: gpt-4o-mini 기준 호출당 약 $0.001 (청크 2~4개 × 500 토큰 수준).
-"""
-
 from __future__ import annotations
 
 import json
@@ -24,15 +9,10 @@ from typing import Any, Optional
 
 from app.schemas.saju import SajuResponse
 
-# Default model — kept cheap for MVP. Override via env.
 _MODEL = os.environ.get("OPENAI_INTERPRET_MODEL", "gpt-4o-mini")
 _MAX_OUTPUT_TOKENS = 400
 
-# Deep model — 사주+자미두수 융합 풀이 전용. gpt-4.1 이 긴 JSON +
-# instruction-following 에 더 정확하면서 비용은 gpt-4o 와 비슷해 default
-# 로 채택. 환경변수로 override 가능 (예: gpt-4o, gpt-4.5, o3-mini 등).
 _MODEL_DEEP = os.environ.get("OPENAI_INTERPRET_MODEL_DEEP", "gpt-4.1")
-# 깊이·연결성 강화로 출력이 길어짐 — 12궁×4문장 + 4섹션×4문장 + summary 5문장 ≈ 4000+ 토큰.
 _MAX_OUTPUT_TOKENS_DEEP = 4500
 
 
@@ -79,11 +59,8 @@ _SYSTEM_PROMPT = (
 
 @dataclass
 class RetrievedPassage:
-    """One classical passage fed to the LLM as grounding."""
-
-    citation: str                  # e.g. "《궁통보감》 - 論甲木 - 三春甲木"
-    content: str                   # Korean translation of the classical text
-
+    citation: str
+    content: str
 
 @lru_cache(maxsize=1)
 def _client():
@@ -166,9 +143,6 @@ def generate_saju_interpretation(
         # Interpretation is best-effort. Never fail the whole /saju/me call.
         return None
 
-
-# --- Pair recommendation prompt (post-match) ------------------------
-
 _PAIR_SYSTEM_PROMPT = (
     "당신은 두 사용자의 사주 궁합을 분석하여 대화 주제와 데이트 팁을 "
     "한국어로 제안하는 도우미입니다.\n"
@@ -224,9 +198,7 @@ def _build_pair_message(
     lines.append("위 원전 구절을 근거로 JSON 을 반환하십시오.")
     return "\n".join(lines)
 
-
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
-
 
 def _parse_pair_json(text: str) -> Optional[dict[str, Any]]:
     """Best-effort JSON extraction — tolerates code fences and trailing text."""
@@ -251,9 +223,6 @@ def _parse_pair_json(text: str) -> Optional[dict[str, Any]]:
     if not isinstance(data, dict):
         return None
     return data
-
-
-# --- Detailed self-saju interpretation (multi-section) -------------
 
 _DETAILED_SYSTEM_PROMPT = (
     "당신은 사용자의 사주 팔자와 원전 문헌의 관련 구절을 바탕으로 "
@@ -304,7 +273,6 @@ _DETAILED_SYSTEM_PROMPT = (
     "원전 구절이 사주와 명확한 연결점이 없는 카테고리는 빈 문자열을 반환해도 됩니다."
 )
 
-
 def generate_detailed_interpretation(
     saju: SajuResponse,
     passages: list[RetrievedPassage],
@@ -340,8 +308,6 @@ def generate_detailed_interpretation(
         return None
 
 
-# --- 운명의 실타래 (커플 사주 심층 비교) ------------------------------
-
 _DESTINY_SYSTEM_PROMPT = (
     "당신은 두 사용자의 사주 정보를 직접 비교해 깊이 있는 궁합 분석을 "
     "한국어로 작성하는 도우미입니다.\n"
@@ -367,7 +333,6 @@ _DESTINY_SYSTEM_PROMPT = (
     '  "longterm":    "장기 전망과 관계 발전 방향"\n'
     "}\n"
 )
-
 
 def _build_destiny_message(
     *,
@@ -395,7 +360,6 @@ def _build_destiny_message(
         f"궁합 풀이를 JSON 으로 작성하십시오. 본문에서는 반드시 두 사람을 "
         f"'{nick_a}님', '{nick_b}님' 으로만 호칭하십시오.",
     ])
-
 
 def generate_destiny_analysis(
     *,
@@ -428,8 +392,6 @@ def generate_destiny_analysis(
     except Exception:
         return None
 
-
-# --- 데이트 장소 추천 ------------------------------------------------
 
 _DATE_RECOMMENDATION_SYSTEM_PROMPT = (
     "당신은 두 사용자의 사주 궁합을 바탕으로 어울리는 데이트 장소를 "
@@ -522,8 +484,6 @@ def generate_date_recommendation(
     except Exception:
         return None
 
-
-# --- 자미두수 interpretation -----------------------------------------
 
 _JAMIDUSU_SYSTEM_PROMPT = (
     "당신은 사용자의 사주 팔자 정보를 바탕으로 "
@@ -663,8 +623,6 @@ def generate_jamidusu_interpretation(
     except Exception:
         return None
 
-
-# ─── 자미두수 Deep — 사주 + 진짜 자미두수 차트 융합 풀이 ──────────
 
 _JAMIDUSU_DEEP_SYSTEM_PROMPT = (
     "당신은 사용자의 사주 팔자와 **실제 계산된 자미두수 12궁·14주성 명반(命盤)**, "
@@ -866,11 +824,6 @@ def generate_jamidusu_deep(
     *,
     model: str = _MODEL_DEEP,
 ) -> Optional[dict[str, Any]]:
-    """사주 + 자미두수 차트 + RAG → 융합 풀이 JSON.
-
-    Returns dict with: headline, overview, sections{personality,love,wealth,advice},
-    palaces[12], main_stars_summary. None on hard failure.
-    """
     try:
         resp = _client().responses.create(
             model=model,
@@ -883,7 +836,6 @@ def generate_jamidusu_deep(
         if parsed is None:
             return None
 
-        # 정상화 — 빈 필드는 빈 문자열로 보장
         sections_raw = parsed.get("sections") or {}
         sections = {
             "personality": str(sections_raw.get("personality") or "").strip(),
@@ -920,10 +872,7 @@ def generate_pair_recommendation(
     passages: list[RetrievedPassage],
     model: str = _MODEL,
 ) -> Optional[dict[str, Any]]:
-    """Generate structured pair recommendation. Returns dict or None on failure.
 
-    Dict keys: strengths, cautions, conversation_starters, summary.
-    """
     if not passages:
         return None
     try:
@@ -942,12 +891,76 @@ def generate_pair_recommendation(
         parsed = _parse_pair_json(text)
         if parsed is None:
             return None
-        # Normalize — ensure list fields are lists, summary is str.
         return {
             "strengths": list(parsed.get("strengths") or []),
             "cautions": list(parsed.get("cautions") or []),
             "conversation_starters": list(parsed.get("conversation_starters") or []),
             "summary": parsed.get("summary") or None,
         }
+    except Exception:
+        return None
+
+
+_DAILY_FORTUNE_PROMPT = (
+    "당신은 사용자의 사주와 '오늘의 일진(日辰)' 신호를 바탕으로 "
+    "오늘 하루의 인연운을 한국어로 짧게 써주는 다정한 데이팅 코치입니다.\n"
+    "\n"
+    "톤·스타일:\n"
+    "- 다정한 존댓말. 친한 코치가 옆에서 말해주는 느낌.\n"
+    "- 단정·예언·저주 금지. 건강·질병·수명·이별 확정 금지.\n"
+    "- 명령형 '~해라', 격식체 '~십시오', 반말 모두 금지.\n"
+    "\n"
+    "공통 규칙:\n"
+    + _PLAIN_KOREAN_RULES +
+    "- 아래 '오늘 신호'에 적힌 값만 근거로 쓰고, 없는 사실을 지어내지 마세요.\n"
+    "- 매일 달라지는 '오늘의 십성·배지'를 자연스럽게 녹여 어제와 다른 하루 느낌을 주세요.\n"
+    "- 총 2~3 문장, 150자 이내. 도입부·면책·맺음말·번호·마크다운 금지."
+)
+
+_DAILY_ACTION_PROMPT = (
+    "당신은 사용자의 사주와 '오늘의 일진(日辰)' 신호를 바탕으로 "
+    "오늘 어떻게 입고·어떤 태도로·어떤 마음으로 인연을 대하면 좋을지 "
+    "한국어로 짧게 제안하는 다정한 데이팅 코치입니다.\n"
+    "\n"
+    "톤·스타일:\n"
+    "- 다정한 존댓말, 제안형('~해보시는 건 어떨까요'). 단정·예언 금지.\n"
+    "- 명령형 '~해라', 격식체 '~십시오', 반말 모두 금지.\n"
+    "\n"
+    "공통 규칙:\n"
+    + _PLAIN_KOREAN_RULES +
+    "- 아래 '오늘 신호'에 적힌 값만 근거로 쓰고, 없는 사실을 지어내지 마세요.\n"
+    "- 옷차림 → 태도 → 마음가짐 흐름으로, 매일 다른 느낌을 주세요.\n"
+    "- 총 2~3 문장, 150자 이내. 도입부·면책·맺음말·번호·마크다운 금지."
+)
+
+_DAILY_PROMPTS: dict[str, str] = {
+    "fortune": _DAILY_FORTUNE_PROMPT,
+    "action_guide": _DAILY_ACTION_PROMPT,
+}
+
+
+def generate_daily_text(
+    *,
+    kind: str,
+    nickname: str,
+    signal_text: str,
+    model: str = _MODEL,
+) -> Optional[str]:
+    """오늘의 인연운/행동가이드 프로즈를 LLM 으로 생성. 실패 시 None."""
+    prompt = _DAILY_PROMPTS.get(kind)
+    if prompt is None:
+        return None
+    try:
+        resp = _client().responses.create(
+            model=model,
+            instructions=prompt,
+            input=(
+                f"[{nickname}님의 오늘 신호]\n{signal_text}\n\n"
+                "위 신호만 근거로 오늘의 문구를 작성하십시오."
+            ),
+            max_output_tokens=_MAX_OUTPUT_TOKENS,
+        )
+        text = _extract_output_text(resp)
+        return text or None
     except Exception:
         return None

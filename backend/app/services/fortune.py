@@ -1,16 +1,3 @@
-"""오늘의 인연운 — 사주 + 오늘 일진(日辰) 기반 일일 fortune (풍부한 버전).
-
-입력으로 활용:
-  - 사용자 일간(日干) — 천간 십성(十星) 관계
-  - 사용자 일지(日支) — 충/합/도화 발동
-  - 사용자 오행 분포 — 용신/기신 추정
-  - 오늘 일주(日柱) — 매일 KST 자정에 갱신
-  - 오늘 천을귀인 / 도화 발동 여부
-
-말투: 친근한 반말 (가까운 친구가 사주를 봐주는 느낌).
-LLM 호출 없음 — rule-based 다층 조합 + 결정론적 템플릿 선택.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -26,6 +13,8 @@ from app.services.saju_chart import (
     branch_ten_god,
     ten_god,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.daily_ai import get_or_create_daily_text
 from app.services.saju_engine import _day_pillar
 from app.services.saju_enrichment import (
     branch_element,
@@ -258,10 +247,6 @@ def compute_today_fortune(user: User) -> Optional[TodayFortune]:
     else:
         caution_text = "평소처럼 자연스럽게 임하시면 충분할 것 같아요"
 
-    # ★ 메인 fortune_text — 3줄 자연스러운 글, 존대 + 제안형.
-    # Line 1: {이름님}, {헤드라인}.
-    # Line 2: {시간대}쯤 {장소}는 어떠신가요? — 만나는 사람 성향 묘사
-    # Line 3: {색상} 포인트로 살짝 멋 부려보시는 것도 좋고요. {주의}.
     fortune_text = (
         f'"{call_name}, {headline}.\n'
         f"{timing}쯤 {place}는 어떠신가요? "
@@ -289,3 +274,20 @@ def compute_today_fortune(user: User) -> Optional[TodayFortune]:
         lucky_color=lucky_color,
         badges=badges,
     )
+
+async def get_today_fortune_ai(user: User, db: AsyncSession) -> Optional[TodayFortune]:
+    fortune = compute_today_fortune(user)
+    if fortune is None:
+        return None
+
+    signal = (
+        f"오늘 일진: {fortune.today_pillar} / 오늘의 십성: {fortune.relation}"
+        f" / 만나는 사람: {fortune.person_type} / 좋은 시간대: {fortune.timing}"
+        f" / 좋은 장소: {fortune.place} / 행운색: {fortune.lucky_color}"
+        f" / 배지: {', '.join(fortune.badges) if fortune.badges else '없음'}"
+        f" / 별점: {fortune.score}"
+    )
+    ai = await get_or_create_daily_text(user, "fortune", signal, db)
+    if ai:
+        fortune.fortune_text = ai
+    return fortune
