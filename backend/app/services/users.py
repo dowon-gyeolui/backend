@@ -3,7 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.card_unlock import CardUnlock
 from app.models.chat import ChatThread, Message
+from app.models.daily_ai_text import DailyAiText
 from app.models.moderation import UserStrike
+from app.models.payment import StarOrder
 from app.models.photo import UserPhoto
 from app.models.report import Report
 from app.models.user import User
@@ -127,6 +129,9 @@ async def delete_account(user: User, db: AsyncSession) -> None:
       - card_unlocks.user_id  AND .candidate_id (the user might have
         been someone else's unlocked card, those rows must go too)
       - reports.reporter_id / reported_id
+      - daily_ai_texts.user_id (cached 오늘의 인연운/행동가이드 — present
+        for nearly every user who has opened the home screen)
+      - star_orders.user_id (별 충전 결제 내역)
 
     Re-registration with the same kakao_id is fine — the unique constraint
     is satisfied once this row is gone.
@@ -189,15 +194,25 @@ async def delete_account(user: User, db: AsyncSession) -> None:
         delete(UserStrike).where(UserStrike.user_id == user.id)
     )
 
+    # 7) Cached daily AI texts (오늘의 인연운 / 행동 가이드).
+    await db.execute(
+        delete(DailyAiText).where(DailyAiText.user_id == user.id)
+    )
+
+    # 8) Star top-up orders.
+    await db.execute(
+        delete(StarOrder).where(StarOrder.user_id == user.id)
+    )
+
     # Snapshot the kakao_id BEFORE deleting the row so we can unlink
     # on Kakao's side even after our DB record is gone.
     kakao_id = user.kakao_id
 
-    # 7) Our user row.
+    # 9) Our user row.
     await db.delete(user)
     await db.commit()
 
-    # 8) Tell Kakao the user is gone — without this, the user's "동의 완료"
+    # 10) Tell Kakao the user is gone — without this, the user's "동의 완료"
     #    state on Kakao persists, and a re-signup flows in silently
     #    without showing the consent screen. Best-effort: failure here
     #    doesn't roll back the local delete (already committed above).
