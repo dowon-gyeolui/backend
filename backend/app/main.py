@@ -16,6 +16,7 @@ from app.routers import (
     recommendations,
     reports,
     saju,
+    stats,
     users,
 )
 
@@ -75,6 +76,7 @@ app.include_router(chat.router, prefix="/chat", tags=["chat"])
 app.include_router(reports.router, prefix="/reports", tags=["reports"])
 app.include_router(payments.router, prefix="/payments", tags=["payments"])
 app.include_router(matching.router, prefix="/matches", tags=["matches"])
+app.include_router(stats.router, prefix="/stats", tags=["stats"])
 
 
 @app.get("/health", tags=["system"])
