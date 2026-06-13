@@ -401,6 +401,23 @@ async def _is_primary_face_verified(user: User, db: AsyncSession) -> bool:
     return bool(primary and primary.is_face_verified)
 
 
+async def _candidate_photos(user: User, db: AsyncSession) -> list[str]:
+    """후보가 등록한 전체 사진 URL — position 순. 팝업 캐러셀용.
+
+    primary 사진을 항상 맨 앞에 두고, 나머지는 position 순으로 잇는다.
+    """
+    from app.models.photo import UserPhoto
+
+    rows = (
+        await db.execute(
+            select(UserPhoto)
+            .where(UserPhoto.user_id == user.id)
+            .order_by(UserPhoto.is_primary.desc(), UserPhoto.position.asc())
+        )
+    ).scalars().all()
+    return [p.url for p in rows if p.url]
+
+
 # Korea Standard Time — KST 자정(00:00) 기준 계산에 사용.
 _KST = timezone(timedelta(hours=9))
 
@@ -452,6 +469,7 @@ def _build_card_for(
             )
             card.dominant_element = _ELEMENT_KO[dom] if dom else None
             card.mbti = candidate.mbti
+            card.bio = candidate.bio
         except Exception:
             # Saju calc may fail for malformed birth data — keep the card
             # usable with just the always-visible fields.

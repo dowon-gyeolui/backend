@@ -33,6 +33,9 @@ class MatchCandidate(BaseModel):
 
     # Unblinded-only extras (null when is_blinded=True)
     photo_url: Optional[str] = None
+    # 후보가 등록한 전체 사진 URL (position 순) — 팝업 캐러셀용
+    photos: list[str] = []
+    bio: Optional[str] = None
     birth_year: Optional[int] = None
     dominant_element: Optional[str] = None
     mbti: Optional[str] = None

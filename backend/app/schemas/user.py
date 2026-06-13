@@ -72,6 +72,12 @@ class ProfileUpdate(BaseModel):
         Literal["무교", "기독교", "불교", "천주교", "기타"]
     ] = None
 
+    # 이상형(필수) — 오늘의 인연 후보 필터링용
+    pref_age_min: Optional[int] = Field(default=None, ge=18, le=99)
+    pref_age_max: Optional[int] = Field(default=None, ge=18, le=99)
+    pref_region: Optional[str] = Field(default=None, max_length=50)
+    pref_height_min: Optional[int] = Field(default=None, ge=100, le=250)
+
     @field_validator("mbti")
     @classmethod
     def check_mbti(cls, v: Optional[str]) -> Optional[str]:
@@ -102,6 +108,12 @@ class UserProfileResponse(BaseModel):
     smoking: Optional[str] = None
     drinking: Optional[str] = None
     religion: Optional[str] = None
+
+    # 이상형(필수)
+    pref_age_min: Optional[int] = None
+    pref_age_max: Optional[int] = None
+    pref_region: Optional[str] = None
+    pref_height_min: Optional[int] = None
 
     is_paid: bool
     star_balance : int

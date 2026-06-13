@@ -10,6 +10,7 @@
 현재는 사용자별 "다음 최고점 미열람 후보"(비대칭 MVP)로 공개한다.
 """
 
+import random
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
@@ -21,7 +22,9 @@ from app.models.user import User
 from app.schemas.compatibility import MatchCandidate
 from app.services.compatibility import (
     _build_card_for,
+    _candidate_photos,
     _candidate_pool,
+    _compute_age,
     _is_primary_face_verified,
     _snap_to_midnight_kst,
     calculate,
@@ -29,6 +32,76 @@ from app.services.compatibility import (
 
 STAR_COST_PER_CARD = 10
 EXTRA_DAILY_LIMIT = 10
+
+# 이상형 단계적 완화 경계값.
+_HEIGHT_STEP = 5   # 키: -5cm씩 하강
+_HEIGHT_FLOOR = 140
+_AGE_STEP = 3      # 나이: ±3세씩 확대
+_AGE_FLOOR = 18
+_AGE_CEIL = 99
+
+
+def _matches(
+    c: User,
+    *,
+    age_min: int | None,
+    age_max: int | None,
+    region: str | None,
+    height_min: int | None,
+) -> bool:
+    """후보 c 가 주어진 이상형 조건을 모두 만족하는가. None 조건은 미적용."""
+    if age_min is not None and age_max is not None:
+        age = _compute_age(c.birth_date)
+        if age is None or not (age_min <= age <= age_max):
+            return False
+    if region is not None and c.region != region:
+        return False
+    if height_min is not None:
+        if c.height_cm is None or c.height_cm < height_min:
+            return False
+    return True
+
+
+def _relaxation_configs(
+    user: User,
+) -> list[tuple[int | None, int | None, str | None, int | None]]:
+    """이상형 필터를 엄격→느슨 순으로 누적 완화한 (age_min, age_max, region,
+    height_min) 설정 리스트. 키 → 나이 → 지역 순으로 푼다.
+
+    한 번 푼 조건은 이후 단계에서도 계속 풀린 상태로 유지(누적). 마지막
+    설정은 항상 (None, None, None, None) = 기본 풀 전체.
+    """
+    a_min = user.pref_age_min
+    a_max = user.pref_age_max
+    region = user.pref_region
+    h = user.pref_height_min
+
+    configs: list[tuple[int | None, int | None, str | None, int | None]] = [
+        (a_min, a_max, region, h)  # 0단계: 엄격
+    ]
+
+    # 1) 키 -5cm씩 하강 → 해제
+    if h is not None:
+        hh = h - _HEIGHT_STEP
+        while hh >= _HEIGHT_FLOOR:
+            configs.append((a_min, a_max, region, hh))
+            hh -= _HEIGHT_STEP
+        configs.append((a_min, a_max, region, None))
+
+    # 2) 나이 ±3세씩 확대 → 해제 (키는 이미 해제된 상태)
+    if a_min is not None and a_max is not None:
+        lo, hi = a_min - _AGE_STEP, a_max + _AGE_STEP
+        while lo > _AGE_FLOOR or hi < _AGE_CEIL:
+            configs.append((max(lo, _AGE_FLOOR), min(hi, _AGE_CEIL), region, None))
+            lo -= _AGE_STEP
+            hi += _AGE_STEP
+        configs.append((None, None, region, None))
+
+    # 3) 지역 해제 = 기본 풀 전체
+    if region is not None:
+        configs.append((None, None, None, None))
+
+    return configs
 
 
 async def _unlocked_ids(user_id: int, db: AsyncSession) -> set[int]:
@@ -41,22 +114,43 @@ async def _unlocked_ids(user_id: int, db: AsyncSession) -> set[int]:
 async def _next_candidate(
     user: User, exclude_ids: set[int], db: AsyncSession
 ) -> User | None:
-    """최고 적합도 미열람 이성 후보 1명. 풀이 비면 None."""
-    pool = [c for c in await _candidate_pool(user, db) if c.id not in exclude_ids]
-    if not pool:
+    """이상형으로 필터된 미열람 이성 후보 중 랜덤 1명. 풀이 비면 None.
+
+    이상형 조건(키→나이→지역)을 단계적으로 완화하며, 후보가 1명이라도
+    나오는 첫 단계에서 멈추고 그 풀에서 랜덤 선정한다.
+    """
+    base = [c for c in await _candidate_pool(user, db) if c.id not in exclude_ids]
+    if not base:
         return None
-    return max(pool, key=lambda c: calculate(user, c).score)
+    for age_min, age_max, region, height_min in _relaxation_configs(user):
+        pool = [
+            c
+            for c in base
+            if _matches(
+                c,
+                age_min=age_min,
+                age_max=age_max,
+                region=region,
+                height_min=height_min,
+            )
+        ]
+        if pool:
+            return random.choice(pool)
+    # 마지막 설정이 기본 풀 전체이므로 여기 도달하지 않지만, 방어적으로.
+    return random.choice(base)
 
 
 async def _reveal(user: User, candidate: User, db: AsyncSession) -> MatchCandidate:
     """열람한 카드는 항상 완전 공개(블라인드 없음)."""
-    return _build_card_for(
+    card = _build_card_for(
         candidate,
         score=calculate(user, candidate).score,
         viewer_is_paid=True,
         is_paid_slot=False,
         is_face_verified=await _is_primary_face_verified(candidate, db),
     )
+    card.photos = await _candidate_photos(candidate, db)
+    return card
 
 
 async def has_unlocked(user_id: int, candidate_id: int, db: AsyncSession) -> bool:

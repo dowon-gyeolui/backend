@@ -37,6 +37,10 @@ _DEV_COLUMNS: list[tuple[str, str, str]] = [
     ("users", "chat_suspended_until", "TIMESTAMP"),
     ("user_photos", "is_face_verified", "BOOLEAN NOT NULL DEFAULT FALSE"),
     ("users",  "star_balance", "INTEGER NOT NULL DEFAULT 0"),
+    ("users", "pref_age_min", "INTEGER"),
+    ("users", "pref_age_max", "INTEGER"),
+    ("users", "pref_region", "VARCHAR(50)"),
+    ("users", "pref_height_min", "INTEGER"),
 ]
 
 async def _dev_migrate_sqlite(conn) -> None:

@@ -31,9 +31,16 @@ class User(Base):
     mbti = Column(String(4), nullable=True)        
     job = Column(String(50), nullable=True)
     region = Column(String(50), nullable=True)     
-    smoking = Column(String(20), nullable=True)    
-    drinking = Column(String(20), nullable=True)   
+    smoking = Column(String(20), nullable=True)
+    drinking = Column(String(20), nullable=True)
     religion = Column(String(20), nullable=True)
+
+    # 이상형(필수) — 오늘의 인연 후보 필터링에 사용. 온보딩에서 입력.
+    pref_age_min = Column(Integer, nullable=True)
+    pref_age_max = Column(Integer, nullable=True)
+    pref_region = Column(String(50), nullable=True)
+    pref_height_min = Column(Integer, nullable=True)
+
     is_paid = Column(Boolean, default=False, nullable=False)
     star_balance = Column(Integer, default = 0, nullable = False)
     chat_suspended_until = Column(DateTime(timezone=True), nullable=True)
