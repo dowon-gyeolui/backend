@@ -91,6 +91,13 @@ def _dominant_element(element_profile) -> Optional[str]:
     return name if count > 0 else None
 
 
+# 가감식 raw 점수의 이론적 범위 — base 50 에 일간(±10)·일지(±10)·주도오행(+5)
+# 시그널을 더한 결과라 실제로는 30~75 점에 머문다. 이 구간을 0~100 으로
+# 선형 재보정해 1~6 등급(90/80/70/60/50% 경계)이 모두 도달 가능하게 만든다.
+_RAW_MIN = 30
+_RAW_MAX = 75
+
+
 def calculate(user_a: User, user_b: User) -> CompatibilityScore:
     """Compute 0..100 compatibility score for two users with birth_date set.
 
@@ -131,7 +138,9 @@ def calculate(user_a: User, user_b: User) -> CompatibilityScore:
     if a_dom and b_dom and (_produces(a_dom, b_dom) or _produces(b_dom, a_dom)):
         score += 5
 
-    score = max(0, min(100, score))
+    # raw(30~75) → 0~100 풀스케일 선형 재보정.
+    scaled = round((score - _RAW_MIN) / (_RAW_MAX - _RAW_MIN) * 100)
+    score = max(0, min(100, scaled))
 
     summary = _build_summary(saju_a, saju_b, score)
 
