@@ -806,12 +806,19 @@ _COMPAT_REPORT_SYSTEM_PROMPT = (
     "공통 규칙:\n"
     + _PLAIN_KOREAN_RULES +
     "- 아래 [궁합 입력]에 적힌 두 사람 정보만 근거로 쓰고, 없는 사실을 지어내지 마세요.\n"
-    "- summary_lines: 2개. 1번은 '잘 맞는 점', 2번은 '살짝 주의할 점'. 각 한 문장(30~70자).\n"
+    "- 상대를 가리킬 때는 [궁합 입력]에 적힌 이름을 그대로 사용하세요.\n"
+    "- summary_lines: 정확히 3개. 순서와 역할이 정해져 있습니다.\n"
+    "  1) 긍정적 케미 — 두 사람의 잘 맞는 점을 밝고 설레는 한 문장으로. (30~70자)\n"
+    "  2) 주의할 점 + 멘트 예시 — 상대의 성향과 살짝 주의할 점을 짚고, 채팅에서 "
+    "바로 쓸 수 있는 구체적인 멘트를 작은따옴표로 예시. (50~95자)\n"
+    "  3) 채팅방 전용 실전 팁 — 오행(五行) 기운을 근거로 한 선톡·답장 코칭 한 문장. "
+    "필요하면 '○○씨는 ~ 좋아한다는데 맞아요?'처럼 대화를 자연스럽게 유도하는 "
+    "코칭 문장도 좋습니다. (50~95자)\n"
     "- keywords: 3개. '#' 로 시작하는 짧은 해시태그 (예: #성장하는인연, #케미좋음).\n"
     "\n"
     "반드시 아래 JSON 스키마만 출력. 다른 설명·도입부·마크다운 금지:\n"
     "{\n"
-    '  "summary_lines": ["잘 맞는 점 한 문장", "주의할 점 한 문장"],\n'
+    '  "summary_lines": ["긍정적 케미 한 문장", "주의할 점+멘트 예시 한 문장", "채팅방 실전 팁 한 문장"],\n'
     '  "keywords": ["#키워드1", "#키워드2", "#키워드3"]\n'
     "}\n"
 )
@@ -824,7 +831,7 @@ def generate_compatibility_report(
     user_b_info: dict,
     model: str = _MODEL,
 ) -> Optional[dict[str, Any]]:
-    """두 사람 사주 비교 → 궁합 요약(summary_lines 2개 + keywords 3개). 실패 시 None."""
+    """두 사람 사주 비교 → 궁합 요약(summary_lines 3개[긍정 케미·주의점+멘트·실전 팁] + keywords 3개). 실패 시 None."""
     nick_a = user_a_info.get("nickname") or "사용자A"
     nick_b = user_b_info.get("nickname") or "사용자B"
     user_input = "\n".join([
@@ -844,7 +851,7 @@ def generate_compatibility_report(
             model=model,
             instructions=_COMPAT_REPORT_SYSTEM_PROMPT,
             input=user_input,
-            max_output_tokens=600,
+            max_output_tokens=800,
         )
         parsed = _parse_pair_json(_extract_output_text(resp))
         if parsed is None:

@@ -262,6 +262,26 @@ def _build_caution_line(
     )
 
 
+# 상대의 주도 오행별 채팅방 선톡·답장 코칭 (AI 실패 시 fallback 3번째 줄).
+_ELEMENT_CHAT_TIP: dict[str, str] = {
+    "fire": "불(火)의 기운이 강한 인연이니 밀당은 금물! 답장은 쿨하고 솔직하게 보낼 때 대화가 가장 불타오릅니다.",
+    "water": "물(水)의 기운이 깊은 상대라, 가벼운 농담보다 진솔한 속마음을 한 줄 더 건넬 때 마음이 열려요.",
+    "wood": "나무(木)의 기운이 자라는 상대라, 함께 그려갈 계획·미래 이야기를 꺼내면 대화가 쭉쭉 이어집니다.",
+    "metal": "쇠(金)의 기운이 또렷한 상대라, 돌려 말하기보다 분명하고 깔끔한 표현이 호감을 키워요.",
+    "earth": "흙(土)의 기운이 단단한 상대라, 급하게 몰아붙이기보다 꾸준한 안부가 신뢰를 쌓아줍니다.",
+}
+
+
+def _build_tip_line(name_b: str, b_dom: Optional[str]) -> str:
+    """Third bullet — 채팅방에서 바로 쓸 수 있는 선톡·답장 실전 팁."""
+    if b_dom and b_dom in _ELEMENT_CHAT_TIP:
+        return _ELEMENT_CHAT_TIP[b_dom]
+    return (
+        f"{name_b}님에게 먼저 가볍게 안부를 건네며 솔직한 관심을 표현해보세요. "
+        "선톡이 대화의 물꼬를 터줍니다."
+    )
+
+
 _SCORE_TAG: list[tuple[int, str]] = [
     (85, "#찰떡궁합"),
     (70, "#호감궁합"),
@@ -320,6 +340,7 @@ def build_report(user_a: User, user_b: User) -> CompatibilityReport:
 
     synergy = _build_synergy_line(name_a, name_b, a_dom, b_dom, stem_rel, branch_rel)
     caution = _build_caution_line(a_dom, b_dom, stem_rel, branch_rel)
+    tip = _build_tip_line(name_b, b_dom)
 
     # Keyword 1 — counterpart's dominant element (= "what their saju brings").
     if b_dom:
@@ -364,7 +385,7 @@ def build_report(user_a: User, user_b: User) -> CompatibilityReport:
         nickname_a=user_a.nickname,
         nickname_b=user_b.nickname,
         score=score_obj.score,
-        summary_lines=ai["summary_lines"] if ai else [synergy, caution],
+        summary_lines=ai["summary_lines"] if ai else [synergy, caution, tip],
         keywords=ai["keywords"] if ai else keywords,
     )
 
