@@ -508,14 +508,17 @@ async def send_media_message(
     if caption:
         await _enforce_chat_moderation(current_user, caption, db)
 
+    # 브라우저는 "audio/webm;codecs=opus" 처럼 codecs 파라미터를 붙여 보내므로
+    # 베이스 MIME 만 떼어 허용목록과 비교한다.
+    base_type = (file.content_type or "").split(";")[0].strip().lower()
     if media_type == "image":
-        if file.content_type not in _ALLOWED_IMAGE_TYPES:
+        if base_type not in _ALLOWED_IMAGE_TYPES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"이미지 형식만 업로드 가능합니다 (받은: {file.content_type}).",
             )
     elif media_type == "audio":
-        if file.content_type not in _ALLOWED_AUDIO_TYPES:
+        if base_type not in _ALLOWED_AUDIO_TYPES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"오디오 형식만 업로드 가능합니다 (받은: {file.content_type}).",
