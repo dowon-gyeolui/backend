@@ -207,6 +207,45 @@ def upload_chat_image(file_bytes: bytes, *, sender_id: int) -> str:
     return secure_url
 
 
+def _public_id_from_cloudinary_url(url: str) -> str | None:
+    """Cloudinary secure_url 에서 public_id 를 추출.
+
+    예: https://res.cloudinary.com/<cloud>/video/upload/v123/zami/chat/audio/5/ab.webm
+        → zami/chat/audio/5/ab
+    버전 세그먼트(v123)와 확장자를 떼어낸다. 우리 업로드는 변환 파라미터가
+    없어 경로가 단순해 best-effort 파싱으로 충분하다.
+    """
+    try:
+        after = url.split("/upload/", 1)[1]
+    except (IndexError, AttributeError):
+        return None
+    parts = after.split("/")
+    if parts and parts[0].startswith("v") and parts[0][1:].isdigit():
+        parts = parts[1:]
+    path = "/".join(parts)
+    if "." in path.rsplit("/", 1)[-1]:
+        path = path.rsplit(".", 1)[0]
+    return path or None
+
+
+def delete_chat_audio_by_url(url: str) -> None:
+    """Best-effort 채팅 음성 폐기 — URL 에서 public_id 를 떼어 Cloudinary 삭제.
+
+    음성은 resource_type='video' 로 올라가 있으므로 동일하게 삭제한다.
+    실패해도 무시(이미 evict 됐거나 자격정보 미설정).
+    """
+    public_id = _public_id_from_cloudinary_url(url)
+    if not public_id:
+        return
+    try:
+        _config_cloudinary()
+        import cloudinary.uploader
+
+        cloudinary.uploader.destroy(public_id, resource_type="video")
+    except Exception:
+        pass
+
+
 def upload_chat_audio(file_bytes: bytes, *, sender_id: int) -> str:
     """채팅용 음성 메시지 업로드. Cloudinary 는 audio 도 'video' resource 로 처리."""
     _config_cloudinary()

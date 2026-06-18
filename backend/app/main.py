@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -35,6 +36,24 @@ def _redact_db_url(url: str) -> str:
         return "***"
 
 
+# 음성 메시지 보관기간 만료 정리 주기(초). 1시간마다 14일 지난 음성 폐기.
+_AUDIO_PURGE_INTERVAL_S = 3600
+
+
+async def _audio_purge_loop() -> None:
+    from app.services.audio_retention import purge_expired_audio
+
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                purged = await purge_expired_audio(db)
+            if purged:
+                print(f"[audio-retention] purged {purged} expired audio messages", flush=True)
+        except Exception as exc:
+            print(f"[audio-retention] purge failed: {exc}", flush=True)
+        await asyncio.sleep(_AUDIO_PURGE_INTERVAL_S)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.database import init_db
@@ -48,7 +67,13 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"[startup] knowledge_chunks count failed: {exc}", flush=True)
 
-    yield
+    # 14일 지난 음성 메시지를 주기적으로 폐기하는 백그라운드 루프.
+    purge_task = asyncio.create_task(_audio_purge_loop())
+
+    try:
+        yield
+    finally:
+        purge_task.cancel()
 
 
 app = FastAPI(
