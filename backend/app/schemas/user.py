@@ -127,6 +127,8 @@ class PublicProfileResponse(BaseModel):
     id: int
     nickname: Optional[str] = None
     photo_url: Optional[str] = None  # null when blinded for the caller
+    # 등록한 전체 사진 URL(position 순) — 상세 페이지 캐러셀용. blinded 면 빈 배열.
+    photos: list[str] = []
     is_blinded: bool
 
     age: Optional[int] = None

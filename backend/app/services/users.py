@@ -69,6 +69,9 @@ async def build_public_profile(
     ).scalar_one_or_none()
     is_face_verified = bool(primary_photo and primary_photo.is_face_verified)
 
+    # 상세 페이지 사진 캐러셀용 — blinded 면 공개하지 않는다.
+    photos = [] if is_blinded else await compatibility_service._candidate_photos(target, db)
+
     dominant_ko: str | None = None
     day_pillar: str | None = None
     if target.birth_date is not None:
@@ -97,6 +100,7 @@ async def build_public_profile(
         id=target.id,
         nickname=target.nickname,
         photo_url=None if is_blinded else target.photo_url,
+        photos=photos,
         is_blinded=is_blinded,
         age=age,
         gender=target.gender,
