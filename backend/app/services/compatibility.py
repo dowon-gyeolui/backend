@@ -23,6 +23,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.block import UserBlock
 from app.models.user import User
 from app.schemas.compatibility import (
     CompatibilityReport,
@@ -516,11 +517,20 @@ async def _candidate_pool(
     photo_url 은 갤러리 primary 사진 url 미러링이므로 NOT NULL =
     "최소 한 장의 검증된 얼굴 사진을 등록함" 의미.
     """
+    # 차단 쌍 제외 — 내가 차단했거나 나를 차단한 사용자는 후보에서 뺀다.
+    blocked_by_me = select(UserBlock.blocked_id).where(
+        UserBlock.blocker_id == current_user.id
+    )
+    blocked_me = select(UserBlock.blocker_id).where(
+        UserBlock.blocked_id == current_user.id
+    )
     stmt = (
         select(User)
         .where(User.id != current_user.id)
         .where(User.birth_date.is_not(None))
         .where(User.photo_url.is_not(None))
+        .where(User.id.not_in(blocked_by_me))
+        .where(User.id.not_in(blocked_me))
     )
     if current_user.gender == "male":
         stmt = stmt.where(User.gender == "female")

@@ -11,12 +11,14 @@
 """
 
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.block import UserBlock
 from app.models.card_unlock import KIND_DAILY, KIND_EXTRA, CardUnlock
 from app.models.user import User
 from app.schemas.compatibility import MatchCandidate
@@ -153,12 +155,46 @@ async def _reveal(user: User, candidate: User, db: AsyncSession) -> MatchCandida
     return card
 
 
-async def has_unlocked(user_id: int, candidate_id: int, db: AsyncSession) -> bool:
-    """user 가 candidate 카드를 열람했는가 — 채팅·페어추천 게이트용."""
-    row = await db.execute(
+async def has_unlocked(
+    user_id: int,
+    candidate_id: int,
+    db: AsyncSession,
+    within: Optional[timedelta] = None,
+) -> bool:
+    """user 가 candidate 카드를 열람했는가 — 채팅·페어추천 게이트용.
+
+    within 이 주어지면 unlocked_at 이 그 기간 이내인 열람만 유효로 본다
+    (채팅 열람 제한시간). None 이면 시간 제한 없이 열람 기록 존재만 확인.
+    """
+    stmt = (
         select(CardUnlock.id)
         .where(CardUnlock.user_id == user_id)
         .where(CardUnlock.candidate_id == candidate_id)
+        .limit(1)
+    )
+    if within is not None:
+        cutoff = datetime.now(timezone.utc) - within
+        stmt = stmt.where(CardUnlock.unlocked_at >= cutoff)
+    row = await db.execute(stmt)
+    return row.scalar_one_or_none() is not None
+
+
+async def is_blocked(user_id: int, other_id: int, db: AsyncSession) -> bool:
+    """두 사용자 사이에 (양방향 중 어느 쪽이든) 차단 기록이 있는가."""
+    row = await db.execute(
+        select(UserBlock.id)
+        .where(
+            or_(
+                and_(
+                    UserBlock.blocker_id == user_id,
+                    UserBlock.blocked_id == other_id,
+                ),
+                and_(
+                    UserBlock.blocker_id == other_id,
+                    UserBlock.blocked_id == user_id,
+                ),
+            )
+        )
         .limit(1)
     )
     return row.scalar_one_or_none() is not None

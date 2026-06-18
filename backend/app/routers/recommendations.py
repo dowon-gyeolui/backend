@@ -37,6 +37,11 @@ async def get_pair_recommendation(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if await matching_service.is_blocked(current_user.id, target_user_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="차단된 상대의 추천은 제공하지 않습니다.",
+        )
     if not await matching_service.has_unlocked(current_user.id, target_user_id, db):
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
 from app.database import get_db
+from app.models.block import UserBlock
 from app.models.chat import ChatThread, Message
 from app.models.moderation import UserStrike
 from app.models.user import User
@@ -25,7 +26,7 @@ from app.schemas.chat import (
     MessageOut,
 )
 from app.services.chat_moderation import moderate_chat_message
-from app.services.matching import has_unlocked
+from app.services.matching import has_unlocked, is_blocked
 from app.services.storage import (
     StorageNotConfiguredError,
     upload_chat_audio,
@@ -35,6 +36,9 @@ from app.services.storage import (
 _STRIKE_WINDOW = timedelta(hours=24)
 _SUSPENSION_THRESHOLD = 3
 _SUSPENSION_DURATION = timedelta(hours=24)
+
+# 카드 열람 후 채팅 가능 기간 — 지나면 더 이상 선톡/채팅 불가.
+_CHAT_UNLOCK_TTL = timedelta(hours=24)
 
 
 async def _check_chat_active(user: User) -> None:
@@ -56,11 +60,30 @@ async def _check_chat_active(user: User) -> None:
 
 
 async def _require_unlocked(user: User, peer_id: int, db: AsyncSession) -> None:
-    """카드를 열람한 상대와만 채팅 가능 (PRD 6.2). 선톡하는 쪽이 열람자다."""
+    """카드를 열람한 상대와만, 그리고 열람 후 제한시간 이내에만 채팅 가능.
+
+    PRD 6.2 — 선톡하는 쪽이 열람자다. 열람 후 _CHAT_UNLOCK_TTL 이 지나면
+    채팅이 마감된다.
+    """
     if not await has_unlocked(user.id, peer_id, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="카드를 열람한 상대와만 채팅할 수 있어요.",
+        )
+    if not await has_unlocked(user.id, peer_id, db, within=_CHAT_UNLOCK_TTL):
+        hours = int(_CHAT_UNLOCK_TTL.total_seconds() // 3600)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"카드 열람 후 {hours}시간이 지나 채팅이 마감됐어요.",
+        )
+
+
+async def _require_not_blocked(user_id: int, peer_id: int, db: AsyncSession) -> None:
+    """차단된 상대와는 채팅 불가."""
+    if await is_blocked(user_id, peer_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="차단된 상대와는 채팅할 수 없어요.",
         )
 
 
@@ -389,6 +412,65 @@ async def leave_thread(
     return None
 
 
+@router.delete(
+    "/with/{peer_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def leave_chat_with_peer(
+    peer_id: int,
+    block: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """채팅방 나가기 — peer 기준. 채팅방 헤더의 '방 나가기' 에서 호출.
+
+    block=False(기본): KakaoTalk 식 soft-leave. 내 목록에서만 사라지고
+        상대는 대화를 유지한다. 상대도 이미 나갔다면 hard-delete.
+    block=True(차단): 상대 쪽 방까지 즉시 삭제하고 차단 기록을 남긴다.
+        이후 두 사람은 매칭·추천·채팅에서 영구 제외된다.
+
+    아직 메시지를 주고받지 않아 thread 가 없어도 차단 기록은 남긴다.
+    """
+    small, large = _canonical_pair(current_user.id, peer_id)
+    thread = (
+        await db.execute(
+            select(ChatThread).where(
+                and_(
+                    ChatThread.user_a_id == small,
+                    ChatThread.user_b_id == large,
+                )
+            )
+        )
+    ).scalar_one_or_none()
+
+    if block:
+        if not await is_blocked(current_user.id, peer_id, db):
+            db.add(UserBlock(blocker_id=current_user.id, blocked_id=peer_id))
+        if thread is not None:
+            await db.execute(
+                delete(Message).where(Message.thread_id == thread.id)
+            )
+            await db.delete(thread)
+        await db.commit()
+        return None
+
+    # 일반 나가기 — soft-leave.
+    if thread is not None:
+        if current_user.id == thread.user_a_id:
+            thread.user_a_left = True
+            peer_left = bool(thread.user_b_left)
+        else:
+            thread.user_b_left = True
+            peer_left = bool(thread.user_a_left)
+        if peer_left:
+            await db.execute(
+                delete(Message).where(Message.thread_id == thread.id)
+            )
+            await db.delete(thread)
+    await db.commit()
+    return None
+
+
 @router.get("/with/{peer_id}/messages", response_model=list[MessageOut])
 async def get_messages_with_peer(
     peer_id: int,
@@ -453,6 +535,7 @@ async def send_message_to_peer(
         )
 
     # 카드 열람한 상대와만 채팅. 그 다음 자동 모더레이션(정지/부적절 콘텐츠).
+    await _require_not_blocked(current_user.id, peer_id, db)
     await _require_unlocked(current_user, peer_id, db)
     await _check_chat_active(current_user)
     await _enforce_chat_moderation(current_user, body.content, db)
@@ -503,6 +586,7 @@ async def send_media_message(
             detail=f"user_id={peer_id} not found",
         )
 
+    await _require_not_blocked(current_user.id, peer_id, db)
     await _require_unlocked(current_user, peer_id, db)
     await _check_chat_active(current_user)
     if caption:
