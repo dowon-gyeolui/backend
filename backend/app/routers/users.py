@@ -1,14 +1,17 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
 from app.database import get_db
+from app.models.interview import InterviewAnswer
 from app.models.user import User
 from app.schemas.photo import UserPhotoListResponse, UserPhotoResponse
 from app.schemas.user import (
     BirthDataCreate,
     BirthDataUpdate,
+    InterviewAnswersUpdate,
     ProfileUpdate,
     PublicProfileResponse,
     UserProfileResponse,
@@ -41,6 +44,37 @@ async def get_public_profile(
             detail=f"user_id={user_id} 를 찾을 수 없습니다.",
         )
     return await users_service.build_public_profile(current_user, target, db)
+
+
+@router.put("/me/interview", status_code=status.HTTP_204_NO_CONTENT)
+async def replace_interview_answers(
+    body: InterviewAnswersUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """연애 인터뷰 답변 전체 교체 — 온보딩 마지막 단계에서 호출.
+
+    기존 답변을 모두 지우고 새로 받은 답변(빈 답변은 제외)으로 대체한다.
+    """
+    await db.execute(
+        delete(InterviewAnswer).where(InterviewAnswer.user_id == current_user.id)
+    )
+    seen: set[str] = set()
+    for item in body.answers:
+        text = (item.answer or "").strip()
+        key = item.question_key.strip()
+        if not text or not key or key in seen:
+            continue
+        seen.add(key)
+        db.add(
+            InterviewAnswer(
+                user_id=current_user.id,
+                question_key=key[:40],
+                answer=text[:500],
+            )
+        )
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/me/birth-data", response_model=UserProfileResponse)

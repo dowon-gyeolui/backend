@@ -2,6 +2,7 @@ from app.models.block import UserBlock
 from app.models.card_unlock import CardUnlock
 from app.models.daily_ai_text import DailyAiText
 from app.models.chat import ChatThread, Message
+from app.models.interview import InterviewAnswer
 from app.models.knowledge import KnowledgeChunk
 from app.models.moderation import UserStrike
 from app.models.payment import StarOrder

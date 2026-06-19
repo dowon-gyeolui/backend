@@ -1,9 +1,10 @@
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.card_unlock import CardUnlock
 from app.models.chat import ChatThread, Message
 from app.models.daily_ai_text import DailyAiText
+from app.models.interview import InterviewAnswer
 from app.models.moderation import UserStrike
 from app.models.payment import StarOrder
 from app.models.photo import UserPhoto
@@ -12,6 +13,7 @@ from app.models.user import User
 from app.schemas.user import (
     BirthDataCreate,
     BirthDataUpdate,
+    InterviewAnswerOut,
     ProfileUpdate,
     PublicProfileResponse,
 )
@@ -72,6 +74,32 @@ async def build_public_profile(
     # 상세 페이지 사진 캐러셀용 — blinded 면 공개하지 않는다.
     photos = [] if is_blinded else await compatibility_service._candidate_photos(target, db)
 
+    # 연애 인터뷰 — 상호주의(맞팔) 노출. 상대가 답한 개수와 viewer 가 답한
+    # 개수 중 작은 만큼만 상대 답변을 보여준다(viewer 가 0개면 0개 = 전부 잠김).
+    target_answers = (
+        await db.execute(
+            select(InterviewAnswer)
+            .where(InterviewAnswer.user_id == target.id)
+            .order_by(InterviewAnswer.id.asc())
+        )
+    ).scalars().all()
+    interview_total = len(target_answers)
+    if viewer.id == target.id:
+        visible_n = interview_total
+    else:
+        viewer_count = (
+            await db.execute(
+                select(func.count(InterviewAnswer.id)).where(
+                    InterviewAnswer.user_id == viewer.id
+                )
+            )
+        ).scalar_one() or 0
+        visible_n = min(viewer_count, interview_total)
+    interview_answers = [
+        InterviewAnswerOut(question_key=a.question_key, answer=a.answer)
+        for a in target_answers[:visible_n]
+    ]
+
     dominant_ko: str | None = None
     day_pillar: str | None = None
     if target.birth_date is not None:
@@ -102,6 +130,8 @@ async def build_public_profile(
         photo_url=None if is_blinded else target.photo_url,
         photos=photos,
         is_blinded=is_blinded,
+        interview_answers=interview_answers,
+        interview_total=interview_total,
         age=age,
         gender=target.gender,
         bio=target.bio,

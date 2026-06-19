@@ -123,6 +123,20 @@ class UserProfileResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class InterviewAnswerIn(BaseModel):
+    question_key: str = Field(max_length=40)
+    answer: str = Field(max_length=500)
+
+
+class InterviewAnswersUpdate(BaseModel):
+    answers: list[InterviewAnswerIn] = []
+
+
+class InterviewAnswerOut(BaseModel):
+    question_key: str
+    answer: str
+
+
 class PublicProfileResponse(BaseModel):
     id: int
     nickname: Optional[str] = None
@@ -130,6 +144,11 @@ class PublicProfileResponse(BaseModel):
     # 등록한 전체 사진 URL(position 순) — 상세 페이지 캐러셀용. blinded 면 빈 배열.
     photos: list[str] = []
     is_blinded: bool
+
+    # 연애 인터뷰 — 상호주의 노출. interview_answers 는 viewer 가 볼 수 있는
+    # 만큼만(상대 답변 수와 내 답변 수 중 작은 값). interview_total 은 상대의 전체 답변 수.
+    interview_answers: list[InterviewAnswerOut] = []
+    interview_total: int = 0
 
     age: Optional[int] = None
     gender: Optional[str] = None
