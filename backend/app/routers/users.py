@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
@@ -11,6 +11,7 @@ from app.schemas.photo import UserPhotoListResponse, UserPhotoResponse
 from app.schemas.user import (
     BirthDataCreate,
     BirthDataUpdate,
+    InterviewAnswerOut,
     InterviewAnswersUpdate,
     ProfileUpdate,
     PublicProfileResponse,
@@ -44,6 +45,25 @@ async def get_public_profile(
             detail=f"user_id={user_id} 를 찾을 수 없습니다.",
         )
     return await users_service.build_public_profile(current_user, target, db)
+
+
+@router.get("/me/interview", response_model=list[InterviewAnswerOut])
+async def get_my_interview_answers(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """내 연애 인터뷰 답변 — 작성/수정 화면 prefill 용."""
+    rows = (
+        await db.execute(
+            select(InterviewAnswer)
+            .where(InterviewAnswer.user_id == current_user.id)
+            .order_by(InterviewAnswer.id.asc())
+        )
+    ).scalars().all()
+    return [
+        InterviewAnswerOut(question_key=r.question_key, answer=r.answer)
+        for r in rows
+    ]
 
 
 @router.put("/me/interview", status_code=status.HTTP_204_NO_CONTENT)
