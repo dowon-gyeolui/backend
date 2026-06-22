@@ -51,20 +51,34 @@ async def _dev_migrate_sqlite(conn) -> None:
         if column not in existing:
             await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
 
-async def _dev_migrate_postgres(conn) -> None:
-    """Add missing columns on PostgreSQL using IF NOT EXISTS (PG 9.6+)."""
+async def _dev_migrate_postgres() -> None:
+    """Add missing columns on PostgreSQL using IF NOT EXISTS (PG 9.6+).
+
+    각 ALTER 를 독립 트랜잭션 + 짧은 lock_timeout 으로 실행하고, 락 경합/타임아웃은
+    건너뛴다. 이미 존재하는 컬럼이면 no-op 이라 실패해도 안전하며, startup 이
+    DDL 락(ACCESS EXCLUSIVE) 대기로 막혀 배포가 죽는 것을 방지한다.
+    """
     for table, column, ddl in _DEV_COLUMNS:
-        await conn.execute(
-            text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}")
-        )
+        try:
+            async with engine.begin() as conn:
+                # 락을 못 잡으면 3초 안에 빠르게 실패 → 아래 except 로 스킵.
+                await conn.execute(text("SET LOCAL lock_timeout = '3s'"))
+                await conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}")
+                )
+        except Exception as exc:  # noqa: BLE001 — startup 을 막지 않는 게 우선
+            print(f"[init_db] skip ALTER {table}.{column}: {exc}", flush=True)
 
 async def init_db() -> None:
     """Create all tables + apply dev column patches. Called once at startup."""
     import app.models
-    
+
+    # 테이블 생성(새 테이블 포함)은 독립 트랜잭션으로 먼저 커밋한다.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        if engine.dialect.name == "sqlite":
+
+    if engine.dialect.name == "sqlite":
+        async with engine.begin() as conn:
             await _dev_migrate_sqlite(conn)
-        elif engine.dialect.name == "postgresql":
-            await _dev_migrate_postgres(conn)
+    elif engine.dialect.name == "postgresql":
+        await _dev_migrate_postgres()
