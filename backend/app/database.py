@@ -1,4 +1,5 @@
 from typing import AsyncGenerator
+from uuid import uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -7,9 +8,12 @@ from sqlalchemy.orm import DeclarativeBase
 from app.config import settings
 
 # Supabase Transaction 풀러(포트 6543) 대상 설정.
-# - statement_cache_size=0: 트랜잭션 풀러는 연속 트랜잭션을 서로 다른 백엔드로
-#   라우팅할 수 있어, prepared statement 캐시를 켜면 "prepared statement does not
-#   exist" 에러가 난다. asyncpg 캐시를 꺼 매 쿼리를 안전하게 실행한다.
+# - statement_cache_size=0 + prepared_statement_cache_size=0: 트랜잭션 풀러는
+#   여러 클라이언트가 같은 백엔드 세션을 공유하므로 prepared statement 캐시를
+#   켜면 충돌/소실 에러가 난다. asyncpg·SQLAlchemy 양쪽 캐시를 끈다.
+# - prepared_statement_name_func: 캐시를 꺼도 asyncpg 는 `__asyncpg_stmt_1__`
+#   같은 카운터 이름을 재사용해 백엔드 공유 시 DuplicatePreparedStatementError
+#   가 난다. 매번 UUID 로 고유한 이름을 줘 충돌을 원천 차단한다.
 # - 작은 고정 풀 + pre_ping + recycle: 풀러가 idle 연결을 끊어도 자동 복구하고,
 #   동시 연결 수를 풀러 한도 안으로 묶어 EMAXCONNSESSION 을 막는다.
 _engine_kwargs: dict = {"echo": settings.debug}
@@ -19,7 +23,11 @@ if settings.database_url.startswith("postgresql"):
         max_overflow=5,
         pool_pre_ping=True,
         pool_recycle=300,
-        connect_args={"statement_cache_size": 0},
+        connect_args={
+            "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4().hex}__",
+        },
     )
 engine = create_async_engine(settings.database_url, **_engine_kwargs)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
