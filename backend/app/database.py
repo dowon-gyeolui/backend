@@ -6,7 +6,22 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
 
-engine = create_async_engine(settings.database_url, echo=settings.debug)
+# Supabase Transaction 풀러(포트 6543) 대상 설정.
+# - statement_cache_size=0: 트랜잭션 풀러는 연속 트랜잭션을 서로 다른 백엔드로
+#   라우팅할 수 있어, prepared statement 캐시를 켜면 "prepared statement does not
+#   exist" 에러가 난다. asyncpg 캐시를 꺼 매 쿼리를 안전하게 실행한다.
+# - 작은 고정 풀 + pre_ping + recycle: 풀러가 idle 연결을 끊어도 자동 복구하고,
+#   동시 연결 수를 풀러 한도 안으로 묶어 EMAXCONNSESSION 을 막는다.
+_engine_kwargs: dict = {"echo": settings.debug}
+if settings.database_url.startswith("postgresql"):
+    _engine_kwargs.update(
+        pool_size=5,
+        max_overflow=5,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        connect_args={"statement_cache_size": 0},
+    )
+engine = create_async_engine(settings.database_url, **_engine_kwargs)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 class Base(DeclarativeBase):

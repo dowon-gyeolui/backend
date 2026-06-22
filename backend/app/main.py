@@ -74,6 +74,10 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         purge_task.cancel()
+        # 풀의 모든 연결을 닫아, 재배포 시 옛 인스턴스 연결이 풀러 한도를
+        # 잡아먹는 누수를 막는다.
+        from app.database import engine
+        await engine.dispose()
 
 
 app = FastAPI(
