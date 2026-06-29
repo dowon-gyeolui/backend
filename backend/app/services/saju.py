@@ -577,24 +577,19 @@ async def build_jamidusu_deep_for(
         response.interpretation_status = "partial"
         return response
 
-    # 6. LLM 결과 매핑
-    response.headline = llm_result.get("headline", "")
-    response.overview = llm_result.get("overview", "")
-    sections = llm_result.get("sections") or {}
-    response.sections = JamidusuDeepSections(
-        personality=sections.get("personality", ""),
-        love=sections.get("love", ""),
-        wealth=sections.get("wealth", ""),
-        advice=sections.get("advice", ""),
-    )
-
-    # 12궁 풀이 — name_ko 매칭으로 description 채움
-    desc_by_ko: dict[str, str] = {
-        p["name_ko"]: p["description"] for p in (llm_result.get("palaces") or [])
+    # 6. LLM 결과 매핑 — 12궁 새 필드 채움
+    palace_data_by_ko: dict[str, dict] = {
+        p["name_ko"]: p
+        for p in (llm_result.get("palaces") or [])
+        if isinstance(p, dict) and p.get("name_ko")
     }
     for p in response.palaces:
-        p.description = desc_by_ko.get(p.name_ko, "")
+        pd = palace_data_by_ko.get(p.name_ko, {})
+        p.app_title = pd.get("app_title", "")
+        p.summary = pd.get("summary", "")
+        p.love_interpretation = pd.get("love_interpretation", "")
+        p.love_tip = pd.get("love_tip", "")
+        p.keywords = [str(k) for k in (pd.get("keywords") or []) if k]
 
-    response.main_stars_summary = llm_result.get("main_stars_summary", "")
     response.interpretation_status = "ready"
     return response

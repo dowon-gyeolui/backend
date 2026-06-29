@@ -97,14 +97,19 @@ class JamidusuDeepStar(BaseModel):
 
 class JamidusuDeepPalace(BaseModel):
 
-    name: str            
-    name_ko: str         
-    branch: str          
-    branch_ko: str       
-    stem: str            
-    stem_ko: str         
+    name: str
+    name_ko: str
+    branch: str
+    branch_ko: str
+    stem: str
+    stem_ko: str
     stars: list[JamidusuDeepStar] = []
     description: str = ""
+    app_title: str = ""
+    summary: str = ""
+    love_interpretation: str = ""
+    love_tip: str = ""
+    keywords: list[str] = []
 
 class JamidusuDeepSections(BaseModel):
 
