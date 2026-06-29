@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.block import UserBlock
+from app.models.card_unlock import CardUnlock
 from app.models.chat import ChatThread, Message
 from app.models.moderation import UserStrike
 from app.models.user import User
@@ -65,12 +66,22 @@ async def _require_unlocked(user: User, peer_id: int, db: AsyncSession) -> None:
     PRD 6.2 — 선톡하는 쪽이 열람자다. 열람 후 _CHAT_UNLOCK_TTL 이 지나면
     채팅이 마감된다.
     """
-    if not await has_unlocked(user.id, peer_id, db):
+    row = await db.execute(
+        select(CardUnlock.unlocked_at)
+        .where(CardUnlock.user_id == user.id)
+        .where(CardUnlock.candidate_id == peer_id)
+        .limit(1)
+    )
+    unlocked_at = row.scalar_one_or_none()
+    if unlocked_at is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="카드를 열람한 상대와만 채팅할 수 있어요.",
         )
-    if not await has_unlocked(user.id, peer_id, db, within=_CHAT_UNLOCK_TTL):
+    cutoff = datetime.now(timezone.utc) - _CHAT_UNLOCK_TTL
+    if unlocked_at.tzinfo is None:
+        unlocked_at = unlocked_at.replace(tzinfo=timezone.utc)
+    if unlocked_at < cutoff:
         hours = int(_CHAT_UNLOCK_TTL.total_seconds() // 3600)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
