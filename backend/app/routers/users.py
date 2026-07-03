@@ -1,3 +1,4 @@
+"""사용자 프로필/사진/인터뷰 답변/생년월일/계정 삭제 엔드포인트."""
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import delete, select
@@ -124,9 +125,6 @@ async def patch_profile(
     return await users_service.patch_profile(current_user, data, db)
 
 
-# Hard-cap profile photos at 15 MB. 8 MB rejected modern Galaxy/Pixel
-# 50 MP shots straight from the gallery; 15 MB still leaves headroom
-# vs Cloudinary free-tier bandwidth without forcing users to compress.
 _MAX_PHOTO_BYTES = 15 * 1024 * 1024
 
 _ALLOWED_IMAGE_TYPES = {
@@ -135,8 +133,8 @@ _ALLOWED_IMAGE_TYPES = {
     "image/webp",
     "image/heic",
     "image/heif",
-    "image/avif",  # newer Pixel / OnePlus / Samsung browsers
-    "image/gif",   # screenshots from some Android skins
+    "image/avif",
+    "image/gif",
 }
 
 
@@ -159,9 +157,6 @@ async def upload_my_photo(
             detail=f"파일이 너무 큽니다. {_MAX_PHOTO_BYTES // (1024 * 1024)}MB 이하로 올려주세요.",
         )
 
-    # Run face + NSFW moderation BEFORE we waste a Cloudinary upload on
-    # a photo we'd just have to delete. The check is cheap (~2¢ KRW per
-    # photo) and fails fast on obviously unusable shots.
     moderation = verify_profile_photo(raw)
     if not moderation.ok:
         raise HTTPException(
@@ -261,7 +256,7 @@ async def upload_my_photo_to_gallery(
         )
 
     try:
-        result = upload_image_full(raw)  # auto-generated public_id
+        result = upload_image_full(raw)
     except StorageNotConfiguredError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

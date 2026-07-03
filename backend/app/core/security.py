@@ -1,3 +1,5 @@
+"""JWT access token 발급(create_access_token)과 검증(decode_access_token)."""
+
 from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
@@ -14,7 +16,6 @@ def create_access_token(user_id: int) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 def decode_access_token(token: str) -> int | None:
-    """Return the user_id from a token, or None if invalid/expired."""
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
     except JWTError:

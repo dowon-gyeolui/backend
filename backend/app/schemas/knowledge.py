@@ -1,3 +1,5 @@
+"""RAG 지식 청크 생성/조회/검색 스키마."""
+
 from datetime import datetime
 from typing import Literal, Optional
 
@@ -87,9 +89,9 @@ class KnowledgeIngestRequest(BaseModel):
 
 
 class KnowledgeIngestResponse(BaseModel):
-    total: int  # total chunks produced by the chunker
-    created: int  # newly inserted
-    skipped_duplicate: int  # skipped because content_hash already existed
+    total: int
+    created: int
+    skipped_duplicate: int
     chunks: list[KnowledgeChunkResponse]
 
 

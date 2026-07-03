@@ -32,15 +32,12 @@ import os
 import sys
 from pathlib import Path
 
-# Allow running as `python scripts/translate_chunks.py`
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
 from scripts._helpers import load_env_file, load_jsonl, write_jsonl_row  # noqa: E402
 
-# Load backend/.env so OPENAI_API_KEY is available when the script is invoked
-# directly (pydantic-settings only loads .env for the FastAPI app).
 load_env_file(_BACKEND_ROOT)
 
 
@@ -109,11 +106,6 @@ def _load_client():
 
 
 def _extract_output_text(resp) -> str:
-    """Pull the assistant text out of a Responses API result.
-
-    Prefers the convenience `output_text` attribute; falls back to walking
-    `resp.output[*].content[*].text` for older SDK shapes.
-    """
     direct = getattr(resp, "output_text", None)
     if direct:
         return direct.strip()
@@ -162,13 +154,11 @@ def main() -> int:
 
     with output_path.open("w", encoding="utf-8") as fp:
         for row in rows:
-            # Already translated → pass through if requested
             if args.skip_existing and row.get("content_korean"):
                 skipped_existing += 1
                 write_jsonl_row(fp, row)
                 continue
 
-            # Budget exhausted → pass through untouched
             if args.limit is not None and translated >= args.limit:
                 passed_through += 1
                 write_jsonl_row(fp, row)
@@ -195,7 +185,6 @@ def main() -> int:
                 failed += 1
                 idx = row.get("chunk_index")
                 print(f"[{idx}] FAILED: {exc}", file=sys.stderr)
-                # content_original and any pre-existing content_korean are preserved
 
             write_jsonl_row(fp, row)
 

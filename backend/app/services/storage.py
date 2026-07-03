@@ -1,31 +1,16 @@
-"""이미지 저장소 헬퍼 — Cloudinary 백엔드.
-
-프로필 사진과 채팅 미디어(이미지/음성)는 이 모듈을 통해 업로드되어
-DB row 는 가볍게(URL 만) 유지하고 실제 바이트는 Cloudinary CDN 에
-얹는다. S3/Render 디스크 등 다른 백엔드도 동일 upload_image 계약
-뒤에서 추후 갈아끼울 수 있다.
-
-Cloudinary SDK 는 환경변수(CLOUDINARY_URL 또는 세 분리 변수)를
-import 시점에 읽으므로 별도 초기화 코드 없이 .env / Render 환경
-설정만으로 동작한다. 자격 정보가 없으면 StorageNotConfiguredError
-를 발생시킨다.
-"""
+"""이미지/미디어 저장소 헬퍼 — Cloudinary 백엔드."""
 
 from __future__ import annotations
 
 import os
 from typing import Final
 
-# Cloudinary's SDK reads CLOUDINARY_URL or the three split env vars
-# (CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET) at module import time,
-# so configuration is implicit once the env is set on Render / .env.
-
 _FOLDER: Final[str] = "zami/profile"
 _CHAT_FOLDER: Final[str] = "zami/chat"
 
 
 class StorageNotConfiguredError(RuntimeError):
-    """Raised when Cloudinary credentials are missing."""
+    pass
 
 
 def _ensure_configured() -> None:
@@ -43,21 +28,11 @@ def _ensure_configured() -> None:
 
 
 def upload_image(file_bytes: bytes, *, public_id: str | None = None) -> str:
-    """Upload raw image bytes to Cloudinary and return the secure URL.
-
-    `public_id` is optional — when provided we use it (e.g. "user_42") so
-    re-uploading replaces the previous photo instead of accumulating.
-    Cloudinary auto-detects the format from the bytes.
-    """
     _ensure_configured()
 
-    # Lazy import — avoids requiring cloudinary at module load when the
-    # endpoint isn't being hit (e.g. in unit tests with no creds).
     import cloudinary
     import cloudinary.uploader
 
-    # If only the URL form is set, the SDK auto-configures. Otherwise we
-    # explicitly bind the split env vars for safety across deploys.
     if not os.environ.get("CLOUDINARY_URL"):
         cloudinary.config(
             cloud_name=os.environ["CLOUDINARY_CLOUD_NAME"],
@@ -70,14 +45,7 @@ def upload_image(file_bytes: bytes, *, public_id: str | None = None) -> str:
         "folder": _FOLDER,
         "resource_type": "image",
         "overwrite": True,
-        # iPhone Safari uploads HEIC by default — force-convert at storage
-        # time so secure_url ends in .jpg, which every browser can render.
         "format": "jpg",
-        # Android phones embed EXIF orientation tags ("rotate 90° CW for
-        # display") instead of rotating the pixel data. Without
-        # angle: "exif" Cloudinary strips the metadata and ships the
-        # un-rotated pixels — photo shows up sideways. Apply the
-        # rotation to actual pixels first, then it's safe to drop EXIF.
         "transformation": [
             {"angle": "exif"},
             {"width": 800, "height": 800, "crop": "limit", "quality": "auto"},
@@ -98,12 +66,6 @@ def upload_image_full(
     *,
     public_id: str | None = None,
 ) -> dict[str, str]:
-    """Like upload_image but also returns Cloudinary's public_id.
-
-    Multi-photo galleries need public_id so we can delete the asset from
-    Cloudinary when the user removes a photo. The single-photo upload_image
-    above can stay simple since profile photos overwrite the same id.
-    """
     _ensure_configured()
 
     import cloudinary
@@ -121,8 +83,6 @@ def upload_image_full(
         "folder": _FOLDER,
         "resource_type": "image",
         "format": "jpg",
-        # See upload_image — Android EXIF orientation gets stripped
-        # without losing the rotation info if we apply it first.
         "transformation": [
             {"angle": "exif"},
             {"width": 800, "height": 800, "crop": "limit", "quality": "auto"},
@@ -144,12 +104,6 @@ def upload_image_full(
 
 
 def delete_image(public_id: str) -> None:
-    """Best-effort delete of a Cloudinary image by public_id.
-
-    Called when a user removes a photo from their gallery. We swallow
-    any error so the DB row is still removed even if the Cloudinary
-    side already evicted the asset.
-    """
     if not public_id:
         return
     try:
@@ -166,7 +120,6 @@ def delete_image(public_id: str) -> None:
             )
         cloudinary.uploader.destroy(public_id, resource_type="image")
     except Exception:
-        # Orphan asset is fine — DB is the source of truth for what's shown.
         pass
 
 
@@ -184,7 +137,6 @@ def _config_cloudinary() -> None:
 
 
 def upload_chat_image(file_bytes: bytes, *, sender_id: int) -> str:
-    """채팅용 이미지 업로드 — zami/chat 폴더에 저장. 발신자별 prefix."""
     _config_cloudinary()
     import cloudinary.uploader
 
@@ -192,9 +144,6 @@ def upload_chat_image(file_bytes: bytes, *, sender_id: int) -> str:
         file_bytes,
         folder=f"{_CHAT_FOLDER}/img/{sender_id}",
         resource_type="image",
-        # Same HEIC + EXIF concerns as profile photos — apply EXIF
-        # rotation first, then normalize to .jpg so chat images render
-        # right-side-up across iOS/Android.
         format="jpg",
         transformation=[
             {"angle": "exif"},
@@ -208,13 +157,6 @@ def upload_chat_image(file_bytes: bytes, *, sender_id: int) -> str:
 
 
 def _public_id_from_cloudinary_url(url: str) -> str | None:
-    """Cloudinary secure_url 에서 public_id 를 추출.
-
-    예: https://res.cloudinary.com/<cloud>/video/upload/v123/zami/chat/audio/5/ab.webm
-        → zami/chat/audio/5/ab
-    버전 세그먼트(v123)와 확장자를 떼어낸다. 우리 업로드는 변환 파라미터가
-    없어 경로가 단순해 best-effort 파싱으로 충분하다.
-    """
     try:
         after = url.split("/upload/", 1)[1]
     except (IndexError, AttributeError):
@@ -229,11 +171,6 @@ def _public_id_from_cloudinary_url(url: str) -> str | None:
 
 
 def delete_chat_audio_by_url(url: str) -> None:
-    """Best-effort 채팅 음성 폐기 — URL 에서 public_id 를 떼어 Cloudinary 삭제.
-
-    음성은 resource_type='video' 로 올라가 있으므로 동일하게 삭제한다.
-    실패해도 무시(이미 evict 됐거나 자격정보 미설정).
-    """
     public_id = _public_id_from_cloudinary_url(url)
     if not public_id:
         return
@@ -247,15 +184,12 @@ def delete_chat_audio_by_url(url: str) -> None:
 
 
 def upload_chat_audio(file_bytes: bytes, *, sender_id: int) -> str:
-    """채팅용 음성 메시지 업로드. Cloudinary 는 audio 도 'video' resource 로 처리."""
     _config_cloudinary()
     import cloudinary.uploader
 
     result = cloudinary.uploader.upload(
         file_bytes,
         folder=f"{_CHAT_FOLDER}/audio/{sender_id}",
-        # Cloudinary 의 audio 는 resource_type='video' 로 업로드. 'auto'로 두면
-        # webm/mp3/m4a 등 오디오 컨테이너를 알아서 video resource 로 분류.
         resource_type="video",
     )
     secure_url = result.get("secure_url")

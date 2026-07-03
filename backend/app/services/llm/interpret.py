@@ -1,4 +1,6 @@
-﻿from __future__ import annotations
+﻿"""OpenAI Responses API 로 사주/자미두수 원전 근거를 연애 관점 한국어 풀이로 변환."""
+
+from __future__ import annotations
 
 import json
 import os
@@ -98,7 +100,6 @@ def _build_user_message(saju: SajuResponse, passages: list[RetrievedPassage]) ->
     parts.append("[검색된 원전 구절]")
 
     for i, p in enumerate(passages, start=1):
-        # Truncate very long passages so prompt size stays bounded.
         content = p.content if len(p.content) <= 600 else p.content[:600] + "…"
         parts.append(f"{i}. {p.citation}")
         parts.append(f"   {content}")
@@ -109,7 +110,6 @@ def _build_user_message(saju: SajuResponse, passages: list[RetrievedPassage]) ->
 
 
 def _extract_output_text(resp) -> str:
-    """Compatible with multiple openai SDK shapes."""
     direct = getattr(resp, "output_text", None)
     if direct:
         return direct.strip()
@@ -128,10 +128,6 @@ def generate_saju_interpretation(
     *,
     model: str = _MODEL,
 ) -> Optional[str]:
-    """Call the LLM to generate a grounded Korean interpretation.
-
-    Returns None if there are no passages or the LLM call fails.
-    """
     if not passages:
         return None
     try:
@@ -144,7 +140,6 @@ def generate_saju_interpretation(
         text = _extract_output_text(resp)
         return text or None
     except Exception:
-        # Interpretation is best-effort. Never fail the whole /saju/me call.
         return None
 
 _PAIR_SYSTEM_PROMPT = (
@@ -205,7 +200,6 @@ def _build_pair_message(
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
 def _parse_pair_json(text: str) -> Optional[dict[str, Any]]:
-    """Best-effort JSON extraction — tolerates code fences and trailing text."""
     if not text:
         return None
     text = text.strip()
@@ -215,7 +209,6 @@ def _parse_pair_json(text: str) -> Optional[dict[str, Any]]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        # Last resort — find first '{' and matching outermost '}'
         start = text.find("{")
         end = text.rfind("}")
         if start == -1 or end == -1 or end <= start:
@@ -295,12 +288,6 @@ def generate_detailed_interpretation(
     *,
     model: str = _MODEL,
 ) -> Optional[dict[str, str]]:
-    """Generate a 5-section structured interpretation.
-
-    Sections: personality / love / wealth / health / advice.
-    Returns dict with those 5 keys (some values may be empty strings) or
-    None on failure / no passages.
-    """
     if not passages:
         return None
     try:
@@ -311,7 +298,7 @@ def generate_detailed_interpretation(
             max_output_tokens=1200,
         )
         text = _extract_output_text(resp)
-        parsed = _parse_pair_json(text)  # reuse the same JSON extractor
+        parsed = _parse_pair_json(text)
         if parsed is None:
             return None
         return {
@@ -427,11 +414,6 @@ def generate_jamidusu_interpretation(
     *,
     model: str = _MODEL,
 ) -> Optional[dict[str, Any]]:
-    """Generate 자미두수 12궁·14주성 풀이 grounded on the user's saju.
-
-    Returns a dict with keys: overview, palaces (list[{name,description}]),
-    main_stars_summary. Returns None on failure.
-    """
     try:
         resp = _client().responses.create(
             model=model,
@@ -508,7 +490,6 @@ def _build_jamidusu_deep_message(
     chart: dict[str, Any],
     passages: list[RetrievedPassage],
 ) -> str:
-    """LLM 입력 메시지 — 사주 결과 + 자미두수 명반 + 원전 RAG."""
     day_pillar = saju.pillars[2]
     ep = saju.element_profile
 
@@ -531,7 +512,6 @@ def _build_jamidusu_deep_message(
         f"금 {ep.metal} · 수 {ep.water}"
     )
 
-    # 자미두수 명반
     parts.append("")
     parts.append("[자미두수 명반 — 결정론적 계산 결과]")
     parts.append(f"- 오행국: {chart['bureau_name']}")
@@ -555,7 +535,6 @@ def _build_jamidusu_deep_message(
             f"  - {p['name_ko']}: {p['stem_ko']}{p['branch_ko']} — {stars_str}"
         )
 
-    # RAG passages
     if passages:
         parts.append("")
         parts.append("[원전 구절]")
@@ -698,7 +677,6 @@ def generate_daily_text(
     signal_text: str,
     model: str = _MODEL,
 ) -> Optional[str]:
-    """오늘의 인연운/행동가이드 프로즈를 LLM 으로 생성. 실패 시 None."""
     prompt = _DAILY_PROMPTS.get(kind)
     if prompt is None:
         return None
@@ -717,8 +695,6 @@ def generate_daily_text(
     except Exception:
         return None
 
-
-# --- 궁합 리포트 (채팅 드로어) ---------------------------------------
 
 _COMPAT_REPORT_SYSTEM_PROMPT = (
     "당신은 두 사용자의 사주를 비교해 '궁합 요약'을 한국어로 작성하는 "
@@ -756,7 +732,6 @@ def generate_compatibility_report(
     user_b_info: dict,
     model: str = _MODEL,
 ) -> Optional[dict[str, Any]]:
-    """두 사람 사주 비교 → 궁합 요약(summary_lines 3개[긍정 케미·주의점+멘트·실전 팁] + keywords 3개). 실패 시 None."""
     nick_a = user_a_info.get("nickname") or "사용자A"
     nick_b = user_b_info.get("nickname") or "사용자B"
     user_input = "\n".join([

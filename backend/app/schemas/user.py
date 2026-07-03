@@ -1,3 +1,5 @@
+"""사용자 프로필 생성/수정/조회 및 인터뷰 답변 스키마."""
+
 import re
 from datetime import date, datetime
 from typing import Literal, Optional
@@ -72,7 +74,6 @@ class ProfileUpdate(BaseModel):
         Literal["무교", "기독교", "불교", "천주교", "기타"]
     ] = None
 
-    # 이상형(필수) — 오늘의 인연 후보 필터링용
     pref_age_min: Optional[int] = Field(default=None, ge=18, le=99)
     pref_age_max: Optional[int] = Field(default=None, ge=18, le=99)
     pref_region: Optional[str] = Field(default=None, max_length=50)
@@ -100,7 +101,6 @@ class UserProfileResponse(BaseModel):
 
     bio: Optional[str] = None
 
-    # 기본 정보
     height_cm: Optional[int] = None
     mbti: Optional[str] = None
     job: Optional[str] = None
@@ -109,7 +109,6 @@ class UserProfileResponse(BaseModel):
     drinking: Optional[str] = None
     religion: Optional[str] = None
 
-    # 이상형(필수)
     pref_age_min: Optional[int] = None
     pref_age_max: Optional[int] = None
     pref_region: Optional[str] = None
@@ -140,13 +139,10 @@ class InterviewAnswerOut(BaseModel):
 class PublicProfileResponse(BaseModel):
     id: int
     nickname: Optional[str] = None
-    photo_url: Optional[str] = None  # null when blinded for the caller
-    # 등록한 전체 사진 URL(position 순) — 상세 페이지 캐러셀용. blinded 면 빈 배열.
+    photo_url: Optional[str] = None
     photos: list[str] = []
     is_blinded: bool
 
-    # 연애 인터뷰 — 상호주의 노출. interview_answers 는 viewer 가 볼 수 있는
-    # 만큼만(상대 답변 수와 내 답변 수 중 작은 값). interview_total 은 상대의 전체 답변 수.
     interview_answers: list[InterviewAnswerOut] = []
     interview_total: int = 0
 

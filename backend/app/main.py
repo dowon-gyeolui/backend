@@ -1,3 +1,5 @@
+"""FastAPI 앱 엔트리포인트: lifespan(DB 초기화, 음성 정리 루프), CORS, 라우터 등록."""
+
 import asyncio
 from contextlib import asynccontextmanager
 
@@ -36,7 +38,6 @@ def _redact_db_url(url: str) -> str:
         return "***"
 
 
-# 음성 메시지 보관기간 만료 정리 주기(초). 1시간마다 14일 지난 음성 폐기.
 _AUDIO_PURGE_INTERVAL_S = 3600
 
 
@@ -67,15 +68,12 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"[startup] knowledge_chunks count failed: {exc}", flush=True)
 
-    # 14일 지난 음성 메시지를 주기적으로 폐기하는 백그라운드 루프.
     purge_task = asyncio.create_task(_audio_purge_loop())
 
     try:
         yield
     finally:
         purge_task.cancel()
-        # 풀의 모든 연결을 닫아, 재배포 시 옛 인스턴스 연결이 풀러 한도를
-        # 잡아먹는 누수를 막는다.
         from app.database import engine
         await engine.dispose()
 

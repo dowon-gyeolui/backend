@@ -1,3 +1,4 @@
+"""카카오 OAuth 로그인 시작 및 콜백 처리 엔드포인트."""
 from fastapi import APIRouter, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession

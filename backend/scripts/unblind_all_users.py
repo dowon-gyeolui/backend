@@ -1,9 +1,4 @@
-"""One-shot: set is_paid=True for every user.
-
-Demo helper. The matching API blinds candidate photos when the requester is
-unpaid; for showcase purposes we want everyone to see everything. Re-run
-safely — idempotent.
-"""
+"""One-shot: 전체 유저의 is_paid 를 True 로 설정해 매칭 카드 블라인드를 해제하는 데모 헬퍼."""
 
 from __future__ import annotations
 

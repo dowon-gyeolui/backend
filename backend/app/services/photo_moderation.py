@@ -1,17 +1,4 @@
-"""프로필 사진 자동 모더레이션 — AWS Rekognition 기반.
-
-한 장당 두 가지 검사를 수행:
-  1. DetectFaces  — 얼굴이 정확히 한 개이고 프레임 안에서 충분한
-     크기를 차지하는지(풍경 사진, 단체 사진, 사용자가 거의 보이지
-     않는 사진 거절).
-  2. DetectModerationLabels — NSFW/폭력 콘텐츠 거절.
-
-두 호출 모두 읽기 전용이며 호출당 약 $0.001 으로, 일반 프로필 업로드
-한 건당 약 ₩2.6 비용. 가입 후 첫 12개월 동안 월 5,000회까지 무료 티어.
-
-AWS 자격 정보가 없을 때는 graceful degrade — 경고 로그만 남기고
-업로드를 허용한다. 로컬 개발/미설정 환경이 멈추지 않게 하기 위함.
-"""
+"""프로필 사진 얼굴·NSFW 자동 모더레이션 — AWS Rekognition 기반."""
 
 from __future__ import annotations
 
@@ -24,18 +11,10 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-# Tunables — exposed as constants so we can A/B them later without
-# redeploying.
-#
-# 25% face-area threshold: 단순 "얼굴이 보이는" 사진이 아니라 "얼굴이
-# 사진의 주된 피사체" 인 사진만 통과. 전신 사진 / 풍경 + 사람 작게
-# 등은 거절. 이를 통해 모든 업로드 사진을 "검증된 얼굴 사진" 으로
-# 취급할 수 있고, 매칭 카드에 ZAMI 공식 인증 뱃지를 노출하는 근거가 됨.
 MIN_FACE_AREA_RATIO = 0.25
-MIN_FACE_CONFIDENCE = 90.0  # Rekognition confidence (0..100)
-MAX_FACES = 1               # Only single-person photos pass
+MIN_FACE_CONFIDENCE = 90.0
+MAX_FACES = 1
 NSFW_BLOCK_LABELS = {
-    # Top-level Rekognition moderation categories we hard-reject.
     "Explicit Nudity",
     "Nudity",
     "Graphic Male Nudity",
@@ -55,8 +34,8 @@ NSFW_MIN_CONFIDENCE = 75.0
 @dataclass
 class ModerationResult:
     ok: bool
-    reason: Optional[str] = None     # 한국어 사용자용 메시지
-    detail: Optional[str] = None     # 로그용 상세 (어떤 레이블이 잡혔는지)
+    reason: Optional[str] = None
+    detail: Optional[str] = None
 
     @classmethod
     def passed(cls) -> "ModerationResult":
@@ -65,11 +44,6 @@ class ModerationResult:
 
 @lru_cache(maxsize=1)
 def _client():
-    """Lazy boto3 client — only constructed when actually called.
-
-    We import boto3 inside the function so the rest of the app can boot
-    even when boto3 isn't installed (legacy deployments).
-    """
     try:
         import boto3
     except ImportError as exc:
@@ -87,17 +61,6 @@ def _credentials_present() -> bool:
 
 
 def verify_profile_photo(image_bytes: bytes) -> ModerationResult:
-    """Run face + NSFW checks on the image.
-
-    Returns a ModerationResult — caller decides whether to upload to
-    Cloudinary or reject. We run NSFW first because if the image is
-    truly explicit we want to fail fast without analysing faces.
-
-    On AWS error or missing credentials, returns `ok=True` (graceful
-    degradation) so a misconfigured environment doesn't block real users.
-    Production should always have credentials set, and if AWS is down the
-    moderator queue catches issues anyway.
-    """
     if not _credentials_present():
         logger.warning(
             "AWS credentials not set — skipping photo moderation. "
@@ -107,7 +70,6 @@ def verify_profile_photo(image_bytes: bytes) -> ModerationResult:
 
     client = _client()
 
-    # 1) NSFW check
     try:
         nsfw = client.detect_moderation_labels(
             Image={"Bytes": image_bytes},
@@ -123,13 +85,9 @@ def verify_profile_photo(image_bytes: bytes) -> ModerationResult:
                     detail=f"NSFW={name}",
                 )
     except Exception as e:
-        # Don't fail the whole upload on a transient AWS error — log and
-        # let the photo through. The frontend already has a separate
-        # report flow for users to flag bad content.
         logger.exception("Rekognition moderation call failed: %s", e)
         return ModerationResult.passed()
 
-    # 2) Face check
     try:
         faces_resp = client.detect_faces(
             Image={"Bytes": image_bytes},
@@ -162,7 +120,6 @@ def verify_profile_photo(image_bytes: bytes) -> ModerationResult:
             detail=f"low_face_confidence={confidence:.1f}",
         )
 
-    # Face area = bbox width × height (each is a 0..1 ratio of frame).
     bbox = face.get("BoundingBox") or {}
     width = float(bbox.get("Width") or 0.0)
     height = float(bbox.get("Height") or 0.0)

@@ -1,9 +1,4 @@
-"""스타 충전 결제 서비스 — 토스페이먼츠 단건결제 승인.
-
-라우터(routers/payments.py)는 인증·검증만 책임지고 도메인 처리는 이 모듈로
-위임한다. PRODUCT_CATALOG 가 상품↔금액↔스타 매핑의 단일 진실원이다 —
-클라이언트가 보낸 금액은 저장된 주문 금액과 대조해 위변조를 차단한다.
-"""
+"""토스페이먼츠 스타 충전 주문 생성/승인 처리."""
 
 import base64
 from datetime import datetime, timezone
@@ -24,7 +19,6 @@ from app.models.user import User
 
 TOSS_CONFIRM_URL = "https://api.tosspayments.com/v1/payments/confirm"
 
-# PRD 5번 BM 가격구조(VAT 포함). 상품ID → 금액(원) · 지급 스타.
 PRODUCT_CATALOG: dict[str, dict] = {
     "STAR-001": {"price": 1100, "stars": 10, "name": "스타 10개"},
     "STAR-002": {"price": 5500, "stars": 50, "name": "스타 50개"},
@@ -38,7 +32,6 @@ def _utcnow() -> datetime:
 
 
 def _gen_order_id() -> str:
-    # 토스 orderId 규격: 6~64자 영숫자·-·_. uuid hex 로 충돌 없는 값 생성.
     import uuid
 
     return f"zami_{uuid.uuid4().hex}"
@@ -81,10 +74,7 @@ async def confirm_payment(
     amount: int,
     db: AsyncSession,
 ) -> None:
-    """토스 승인 호출 + 성공 시 스타 적립. 멱등(같은 주문 재호출 시 재적립 안 함)."""
     result = await db.execute(
-        # Postgres 에서 동시 confirm 시 이중 적립을 막는 row lock.
-        # SQLite 에서는 no-op.
         select(StarOrder).where(StarOrder.order_id == order_id).with_for_update()
     )
     order = result.scalar_one_or_none()
@@ -95,7 +85,6 @@ async def confirm_payment(
             detail="주문을 찾을 수 없습니다.",
         )
 
-    # 이미 처리된 주문 → 재적립 없이 성공 반환(멱등).
     if order.status == STATUS_PAID:
         return
 
@@ -105,7 +94,6 @@ async def confirm_payment(
             detail="이미 처리되었거나 유효하지 않은 주문입니다.",
         )
 
-    # 위변조 차단 — 클라가 보낸 금액이 서버가 확정한 금액과 다르면 거부.
     if order.amount != amount:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -118,7 +106,6 @@ async def confirm_payment(
             detail="결제 설정이 완료되지 않았습니다.",
         )
 
-    # 토스 인증: base64("{secretKey}:") — 비밀번호 자리는 비운다.
     encoded = base64.b64encode(f"{settings.toss_secret_key}:".encode()).decode()
     headers = {"Authorization": f"Basic {encoded}"}
     body = {"paymentKey": payment_key, "orderId": order_id, "amount": amount}
@@ -129,7 +116,6 @@ async def confirm_payment(
     if resp.status_code != 200:
         order.status = STATUS_FAILED
         await db.commit()
-        # 토스 에러 메시지(detail)를 그대로 노출하지 않고 일반화.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="결제 승인에 실패했습니다.",

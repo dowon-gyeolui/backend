@@ -1,3 +1,5 @@
+"""환경변수 기반 앱 설정(Settings) 정의 및 전역 settings 인스턴스."""
+
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,7 +27,6 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-key-change-in-production"
     access_token_expire_minutes: int = 60 * 24 * 7
 
-    # 토스페이먼츠 시크릿 키(서버 전용). 클라이언트 키는 프론트 env 에 둔다.
     toss_secret_key: str = ""
 
     frontend_urls: str = "http://localhost:3000"

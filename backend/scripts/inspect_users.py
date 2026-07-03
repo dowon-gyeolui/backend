@@ -1,8 +1,4 @@
-"""Quick admin: list all real (non-demo) users with their gender + birth_date.
-
-Useful for spotting users who completed only partial onboarding (e.g.,
-gender is null) which would skip them from gender-filtered matching.
-"""
+"""관리자용: 전체 유저(데모 제외)의 성별/생년월일을 나열해 온보딩 미완료자를 확인."""
 
 from __future__ import annotations
 

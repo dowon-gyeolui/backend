@@ -1,18 +1,4 @@
-"""결정론적 텍스트 청커 — 짧은 청크 병합 후처리 포함.
-
-전략(순서대로):
-  1. 빈 줄 기준 단락 분리.
-  2. 짧은 단락을 max_chars 이하로 그리디 병합.
-  3. 단락 하나가 max_chars 를 넘으면 문장 경계로 분할
-     (`.` `!` `?` `。` `？` `！` + 공백).
-  4. 한 문장이 여전히 max_chars 보다 길면 max_chars 단위로 강제 분할.
-  5. min_chars 미만의 조각은 max_chars * 1.3 까지 허용하며 이웃과 병합.
-
-특성:
-  - 결정론적: 같은 입력 → 같은 출력.
-  - 순서 보존: 본문 읽기 순서대로 반환.
-  - 비중복: 청크 간 오버랩 없음.
-"""
+"""결정론적 텍스트 청커 — 단락/문장 경계 분할 후 짧은 청크 병합."""
 
 from __future__ import annotations
 
@@ -21,7 +7,7 @@ import re
 _PARAGRAPH_SPLIT = re.compile(r"\n\s*\n")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?。？！])\s+")
 
-_MERGE_OVERSHOOT = 1.3  # allow 30% overshoot of max_chars when merging fragments
+_MERGE_OVERSHOOT = 1.3
 
 
 def chunk_text(
@@ -29,7 +15,6 @@ def chunk_text(
     max_chars: int = 500,
     min_chars: int = 80,
 ) -> list[str]:
-    """Split text into chunk-sized pieces, paragraph-first, then merge shorts."""
     if not text or not text.strip():
         return []
     if max_chars <= 0:
@@ -108,7 +93,6 @@ def _merge_short(
     min_chars: int,
     max_chars: int,
 ) -> list[str]:
-    """Fold chunks shorter than min_chars into a neighbor where feasible."""
     if not chunks:
         return chunks
 
@@ -119,7 +103,6 @@ def _merge_short(
     while i < len(chunks):
         current = chunks[i]
 
-        # Forward-merge as long as current is too short and next exists.
         while len(current) < min_chars and i + 1 < len(chunks):
             merged = f"{current}\n\n{chunks[i + 1]}"
             if len(merged) > max_soft:
@@ -127,7 +110,6 @@ def _merge_short(
             current = merged
             i += 1
 
-        # Still too short (e.g. last chunk) — fold back into previous.
         if len(current) < min_chars and out:
             merged = f"{out[-1]}\n\n{current}"
             if len(merged) <= max_soft:

@@ -1,3 +1,4 @@
+"""채팅 스레드/메시지 CRUD, 미디어 전송, 모더레이션, 실시간 폴링 엔드포인트."""
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
@@ -27,7 +28,7 @@ from app.schemas.chat import (
     MessageOut,
 )
 from app.services.chat_moderation import moderate_chat_message
-from app.services.matching import has_unlocked, is_blocked
+from app.services.matching import is_blocked
 from app.services.storage import (
     StorageNotConfiguredError,
     upload_chat_audio,
@@ -38,12 +39,10 @@ _STRIKE_WINDOW = timedelta(hours=24)
 _SUSPENSION_THRESHOLD = 3
 _SUSPENSION_DURATION = timedelta(hours=24)
 
-# 카드 열람 후 채팅 가능 기간 — 지나면 더 이상 선톡/채팅 불가.
 _CHAT_UNLOCK_TTL = timedelta(hours=24)
 
 
 async def _check_chat_active(user: User) -> None:
-    """Raise if the user is currently within a moderation cooldown."""
     now = datetime.now(timezone.utc)
     until = user.chat_suspended_until
     if until is None:
@@ -61,11 +60,6 @@ async def _check_chat_active(user: User) -> None:
 
 
 async def _require_unlocked(user: User, peer_id: int, db: AsyncSession) -> None:
-    """카드를 열람한 상대와만, 그리고 열람 후 제한시간 이내에만 채팅 가능.
-
-    PRD 6.2 — 선톡하는 쪽이 열람자다. 열람 후 _CHAT_UNLOCK_TTL 이 지나면
-    채팅이 마감된다.
-    """
     row = await db.execute(
         select(CardUnlock.unlocked_at)
         .where(CardUnlock.user_id == user.id)
@@ -90,7 +84,6 @@ async def _require_unlocked(user: User, peer_id: int, db: AsyncSession) -> None:
 
 
 async def _require_not_blocked(user_id: int, peer_id: int, db: AsyncSession) -> None:
-    """차단된 상대와는 채팅 불가."""
     if await is_blocked(user_id, peer_id, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -101,11 +94,8 @@ async def _require_not_blocked(user_id: int, peer_id: int, db: AsyncSession) -> 
 async def _enforce_chat_moderation(
     user: User, content: str, db: AsyncSession,
 ) -> None:
-    """Run moderation and bookkeep strikes/suspension. Raises HTTPException
-    on block — caller short-circuits the message send.
-    """
     if not (content or "").strip():
-        return  
+        return
     result = moderate_chat_message(content)
     if result.ok:
         return
@@ -146,8 +136,6 @@ router = APIRouter()
 
 
 def _canonical_pair(a: int, b: int) -> tuple[int, int]:
-    """Return (small, large) so the unique constraint catches duplicates
-    regardless of which user initiated the thread."""
     return (a, b) if a < b else (b, a)
 
 
@@ -189,14 +177,6 @@ async def _get_or_create_thread(
 
 def _peer_id_of(thread: ChatThread, current_user_id: int) -> int:
     return thread.user_b_id if thread.user_a_id == current_user_id else thread.user_a_id
-
-
-def _my_left_flag(thread: ChatThread, current_user_id: int) -> bool:
-    return (
-        thread.user_a_left
-        if thread.user_a_id == current_user_id
-        else thread.user_b_left
-    )
 
 
 def _my_last_read_id(thread: ChatThread, current_user_id: int) -> int:
@@ -465,7 +445,6 @@ async def leave_chat_with_peer(
         await db.commit()
         return None
 
-    # 일반 나가기 — soft-leave.
     if thread is not None:
         if current_user.id == thread.user_a_id:
             thread.user_a_left = True
@@ -545,7 +524,6 @@ async def send_message_to_peer(
             detail=f"user_id={peer_id} not found",
         )
 
-    # 카드 열람한 상대와만 채팅. 그 다음 자동 모더레이션(정지/부적절 콘텐츠).
     await _require_not_blocked(current_user.id, peer_id, db)
     await _require_unlocked(current_user, peer_id, db)
     await _check_chat_active(current_user)
@@ -565,7 +543,7 @@ async def send_message_to_peer(
     return MessageOut.model_validate(msg)
 
 
-_MAX_MEDIA_BYTES = 12 * 1024 * 1024  # 12 MB
+_MAX_MEDIA_BYTES = 12 * 1024 * 1024
 
 _ALLOWED_IMAGE_TYPES = {
     "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/gif",
@@ -603,8 +581,6 @@ async def send_media_message(
     if caption:
         await _enforce_chat_moderation(current_user, caption, db)
 
-    # 브라우저는 "audio/webm;codecs=opus" 처럼 codecs 파라미터를 붙여 보내므로
-    # 베이스 MIME 만 떼어 허용목록과 비교한다.
     base_type = (file.content_type or "").split(";")[0].strip().lower()
     if media_type == "image":
         if base_type not in _ALLOWED_IMAGE_TYPES:

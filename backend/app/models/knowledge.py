@@ -1,3 +1,5 @@
+"""RAG 지식 청크 모델(KnowledgeChunk) — 원전 텍스트 + 임베딩 저장."""
+
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Index, Integer, String, Text

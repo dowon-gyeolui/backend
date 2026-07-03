@@ -1,3 +1,5 @@
+"""사주/자미두수 계산 결과 응답 스키마."""
+
 from datetime import date
 from typing import Literal, Optional
 

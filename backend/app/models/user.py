@@ -1,3 +1,5 @@
+"""사용자 프로필 모델(User)."""
+
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String
@@ -35,7 +37,6 @@ class User(Base):
     drinking = Column(String(20), nullable=True)
     religion = Column(String(20), nullable=True)
 
-    # 이상형(필수) — 오늘의 인연 후보 필터링에 사용. 온보딩에서 입력.
     pref_age_min = Column(Integer, nullable=True)
     pref_age_max = Column(Integer, nullable=True)
     pref_region = Column(String(50), nullable=True)

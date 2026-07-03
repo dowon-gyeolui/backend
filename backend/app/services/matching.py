@@ -1,14 +1,4 @@
-"""인연 카드 열람 서비스 — PRD 카드 모델.
-
-  - 오늘의 인연: 하루 1장 무료(KST 일 단위). 최고 적합도 미열람 후보 자동 배정.
-  - 추가 인연: 별 10개 차감, 하루 10장 한도. 다음 최고 적합도 후보 순차 공개.
-  - 동일 사용자 재추천 불가: 이미 열람한 candidate 는 풀에서 제외.
-  - 채팅 게이트: has_unlocked 로 "열람한 상대와만 채팅" 보장(chat 라우터 참조).
-
-후보 선정·점수·카드 조립은 compatibility 모듈의 엔진을 재사용한다. PRD 6.1
-"양방향 공개"(A↔B 대칭 매칭)는 전역 페어링 알고리즘이 필요한 별도 작업으로,
-현재는 사용자별 "다음 최고점 미열람 후보"(비대칭 MVP)로 공개한다.
-"""
+"""인연 카드 열람 서비스 — 오늘의 인연/추가 인연 배정, 열람·차단 상태 조회."""
 
 import random
 from datetime import datetime, timedelta, timezone
@@ -35,10 +25,9 @@ from app.services.compatibility import (
 STAR_COST_PER_CARD = 10
 EXTRA_DAILY_LIMIT = 10
 
-# 이상형 단계적 완화 경계값.
-_HEIGHT_STEP = 5   # 키: -5cm씩 하강
+_HEIGHT_STEP = 5
 _HEIGHT_FLOOR = 140
-_AGE_STEP = 3      # 나이: ±3세씩 확대
+_AGE_STEP = 3
 _AGE_FLOOR = 18
 _AGE_CEIL = 99
 
@@ -51,7 +40,6 @@ def _matches(
     region: str | None,
     height_min: int | None,
 ) -> bool:
-    """후보 c 가 주어진 이상형 조건을 모두 만족하는가. None 조건은 미적용."""
     if age_min is not None and age_max is not None:
         age = _compute_age(c.birth_date)
         if age is None or not (age_min <= age <= age_max):
@@ -67,22 +55,15 @@ def _matches(
 def _relaxation_configs(
     user: User,
 ) -> list[tuple[int | None, int | None, str | None, int | None]]:
-    """이상형 필터를 엄격→느슨 순으로 누적 완화한 (age_min, age_max, region,
-    height_min) 설정 리스트. 키 → 나이 → 지역 순으로 푼다.
-
-    한 번 푼 조건은 이후 단계에서도 계속 풀린 상태로 유지(누적). 마지막
-    설정은 항상 (None, None, None, None) = 기본 풀 전체.
-    """
     a_min = user.pref_age_min
     a_max = user.pref_age_max
     region = user.pref_region
     h = user.pref_height_min
 
     configs: list[tuple[int | None, int | None, str | None, int | None]] = [
-        (a_min, a_max, region, h)  # 0단계: 엄격
+        (a_min, a_max, region, h)
     ]
 
-    # 1) 키 -5cm씩 하강 → 해제
     if h is not None:
         hh = h - _HEIGHT_STEP
         while hh >= _HEIGHT_FLOOR:
@@ -90,7 +71,6 @@ def _relaxation_configs(
             hh -= _HEIGHT_STEP
         configs.append((a_min, a_max, region, None))
 
-    # 2) 나이 ±3세씩 확대 → 해제 (키는 이미 해제된 상태)
     if a_min is not None and a_max is not None:
         lo, hi = a_min - _AGE_STEP, a_max + _AGE_STEP
         while lo > _AGE_FLOOR or hi < _AGE_CEIL:
@@ -99,7 +79,6 @@ def _relaxation_configs(
             hi += _AGE_STEP
         configs.append((None, None, region, None))
 
-    # 3) 지역 해제 = 기본 풀 전체
     if region is not None:
         configs.append((None, None, None, None))
 
@@ -116,11 +95,6 @@ async def _unlocked_ids(user_id: int, db: AsyncSession) -> set[int]:
 async def _next_candidate(
     user: User, exclude_ids: set[int], db: AsyncSession
 ) -> User | None:
-    """이상형으로 필터된 미열람 이성 후보 중 랜덤 1명. 풀이 비면 None.
-
-    이상형 조건(키→나이→지역)을 단계적으로 완화하며, 후보가 1명이라도
-    나오는 첫 단계에서 멈추고 그 풀에서 랜덤 선정한다.
-    """
     base = [c for c in await _candidate_pool(user, db) if c.id not in exclude_ids]
     if not base:
         return None
@@ -138,12 +112,10 @@ async def _next_candidate(
         ]
         if pool:
             return random.choice(pool)
-    # 마지막 설정이 기본 풀 전체이므로 여기 도달하지 않지만, 방어적으로.
     return random.choice(base)
 
 
 async def _reveal(user: User, candidate: User, db: AsyncSession) -> MatchCandidate:
-    """열람한 카드는 항상 완전 공개(블라인드 없음)."""
     card = _build_card_for(
         candidate,
         score=calculate(user, candidate).score,
@@ -161,11 +133,6 @@ async def has_unlocked(
     db: AsyncSession,
     within: Optional[timedelta] = None,
 ) -> bool:
-    """user 가 candidate 카드를 열람했는가 — 채팅·페어추천 게이트용.
-
-    within 이 주어지면 unlocked_at 이 그 기간 이내인 열람만 유효로 본다
-    (채팅 열람 제한시간). None 이면 시간 제한 없이 열람 기록 존재만 확인.
-    """
     stmt = (
         select(CardUnlock.id)
         .where(CardUnlock.user_id == user_id)
@@ -180,7 +147,6 @@ async def has_unlocked(
 
 
 async def is_blocked(user_id: int, other_id: int, db: AsyncSession) -> bool:
-    """두 사용자 사이에 (양방향 중 어느 쪽이든) 차단 기록이 있는가."""
     row = await db.execute(
         select(UserBlock.id)
         .where(
@@ -224,7 +190,6 @@ async def _daily_today(user_id: int, db: AsyncSession) -> CardUnlock | None:
 
 
 async def get_today_card(user: User, db: AsyncSession) -> MatchCandidate | None:
-    """오늘의 인연 1장(무료). 오늘 것이 있으면 그대로, 없으면 새로 배정."""
     existing = await _daily_today(user.id, db)
     if existing is not None:
         candidate = await db.get(User, existing.candidate_id)
@@ -239,14 +204,12 @@ async def get_today_card(user: User, db: AsyncSession) -> MatchCandidate | None:
 
 
 async def unlock_extra(user: User, db: AsyncSession) -> MatchCandidate:
-    """추가 인연 유료 열람 — 별 10개 차감 후 다음 후보 공개."""
     if await count_extra_today(user.id, db) >= EXTRA_DAILY_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"오늘의 추가 열람 한도({EXTRA_DAILY_LIMIT}장)를 모두 사용했어요.",
         )
 
-    # 후보가 없으면 별이 있어도 의미 없으니 잔액보다 먼저 확인한다.
     candidate = await _next_candidate(user, await _unlocked_ids(user.id, db), db)
     if candidate is None:
         raise HTTPException(
@@ -266,7 +229,6 @@ async def unlock_extra(user: User, db: AsyncSession) -> MatchCandidate:
 
 
 async def list_unlocked(user: User, db: AsyncSession) -> list[MatchCandidate]:
-    """열람한 카드 목록(최근순) — 채팅 가능한 상대들."""
     rows = await db.execute(
         select(CardUnlock)
         .where(CardUnlock.user_id == user.id)

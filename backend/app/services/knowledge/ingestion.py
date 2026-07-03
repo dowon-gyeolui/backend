@@ -1,20 +1,4 @@
-"""원전 텍스트 청크 적재 서비스 — 해시 기반 멱등(idempotent) 보장.
-
-ingest_text() 가 단일 진입점이며 다음에서 호출된다.
-  - POST /knowledge/ingest (개발용 API)
-  - 향후 CLI / 배치 스크립트
-  - 향후 파일 리더(txt/md/pdf → 텍스트 → ingest_text)
-
-책임:
-  - chunking.chunk_text() 로 청킹
-  - 각 청크의 SHA-256 content_hash 계산
-  - 이미 존재하는 해시는 스킵(재적재 안전)
-  - 새 청크는 전체 메타데이터와 함께 읽기 순서대로 적재
-
-범위 밖(향후):
-  - 파일 포맷 리더 — 이 함수에 추출된 텍스트를 넘겨 감싸기만 하면 됨
-  - 임베딩 생성 — 커밋 후 별도로 embedding 컬럼을 채움
-"""
+"""원전 텍스트 청크 적재 서비스 — 해시 기반 멱등(idempotent) 보장."""
 
 import hashlib
 from dataclasses import dataclass, field
@@ -33,12 +17,10 @@ def hash_content(text: str) -> str:
 
 @dataclass
 class IngestResult:
-    total: int                              # total pieces produced by the chunker
-    created: int                            # newly inserted chunks
-    skipped_duplicate: int                  # pieces whose content_hash already existed
+    total: int
+    created: int
+    skipped_duplicate: int
     chunks: list[KnowledgeChunk] = field(default_factory=list)
-    # `chunks` is in reading order and contains BOTH newly created and existing
-    # duplicate chunks, so the caller sees the full set backing this ingest call.
 
 
 async def ingest_text(
@@ -56,7 +38,6 @@ async def ingest_text(
     max_chars: int = 500,
     starting_index: int = 0,
 ) -> IngestResult:
-    """Chunk, hash, deduplicate, and persist. Commits once at the end."""
     pieces = chunk_text(text, max_chars=max_chars)
 
     all_chunks: list[KnowledgeChunk] = []

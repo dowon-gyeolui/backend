@@ -1,15 +1,4 @@
-"""카카오 OAuth 2.0 헬퍼.
-
-카카오 API 호출 두 단계를 감싼다:
-  1. POST https://kauth.kakao.com/oauth/token
-     redirect_uri 가 받은 code 를 access_token 으로 교환.
-  2. GET  https://kapi.kakao.com/v2/user/me
-     안정적 kakao_id 와 닉네임/사진을 가져온다.
-
-카카오 측 오류는 HTTPException(400)으로 변환해 콜백 핸들러가 일반 500
-대신 합리적인 안내를 보일 수 있게 한다. 또한 탈퇴 시 unlink API 호출
-헬퍼도 함께 제공한다.
-"""
+"""카카오 OAuth 2.0 로그인/프로필 조회/unlink 헬퍼."""
 import logging
 from typing import Any
 
@@ -27,22 +16,14 @@ KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
 KAKAO_USER_INFO_URL = "https://kapi.kakao.com/v2/user/me"
 KAKAO_UNLINK_URL = "https://kapi.kakao.com/v1/user/unlink"
 
-# 카카오에 요청할 동의 항목. 콘솔(앱 설정 → 카카오 로그인 → 동의 항목)
-# 에서 각 scope 의 "필수"/"선택" 여부를 설정해야 사용자에게 picker 가
-# 노출된다. 모두 "필수" 로 두면 picker 없이 단일 동의 버튼만 뜸.
-#
-# scope 지정으로 카카오에 "이 항목들에 대해 (다시) 동의 받아라" 신호를
-# 명시적으로 주는 효과 — unlink 후 silent grant 가 일어나는 것을 막는
-# 부수 효과도 있음.
 KAKAO_OAUTH_SCOPES = [
-    "profile_nickname",   # 닉네임 (보통 필수)
-    "profile_image",      # 프로필 이미지 (보통 필수)
-    "account_email",      # 이메일 (선택 추천 — 알림용)
+    "profile_nickname",
+    "profile_image",
+    "account_email",
 ]
 
 
 def kakao_authorize_url() -> str:
-    """The Kakao consent page URL we redirect the user to from /auth/kakao."""
     params = {
         "client_id": settings.kakao_client_id,
         "redirect_uri": settings.kakao_redirect_uri,
@@ -54,7 +35,6 @@ def kakao_authorize_url() -> str:
 
 
 async def exchange_code_for_token(code: str) -> str:
-    """Exchange an authorization code for a Kakao access token."""
     data = {
         "grant_type": "authorization_code",
         "client_id": settings.kakao_client_id,
@@ -83,7 +63,6 @@ async def exchange_code_for_token(code: str) -> str:
 
 
 async def fetch_kakao_profile(access_token: str) -> dict[str, Any]:
-    """Fetch the authenticated user's Kakao profile."""
     headers = {"Authorization": f"Bearer {access_token}"}
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(KAKAO_USER_INFO_URL, headers=headers)
@@ -97,22 +76,6 @@ async def fetch_kakao_profile(access_token: str) -> dict[str, Any]:
 
 
 async def unlink_kakao_user(kakao_id: str) -> None:
-    """탈퇴 시 Kakao 측 동의 연결도 끊는다.
-
-    Kakao 가 사용자 ↔ 우리 앱의 "동의 완료" 상태를 자체 보관하기 때문에,
-    우리 DB 만 지우고 unlink 호출을 안 하면 같은 kakao_id 로 재가입할 때
-    동의 화면이 뜨지 않고 silent login 으로 그냥 들어와버린다 — 사용자
-    UX 도 어색하고 PIPA(개인정보보호법) 관점에서도 "더 이상 보유하지
-    않는다"는 신호를 Kakao 에 보내지 않는 셈.
-
-    어드민 키(KAKAO_ADMIN_KEY) 가 설정되어 있으면 access_token 없이도
-    target_id_type=user_id 방식으로 unlink 가능. 키가 없으면 명확하게
-    경고 로그를 남긴다 — silent skip 으로 인한 디버깅 어려움 방지.
-
-    Kakao 가 4xx/5xx 를 돌려줘도 우리 쪽 탈퇴는 진행한다 — 사용자가
-    이미 다른 데서 unlink 했거나 Kakao 일시 장애 일 수 있고, 그렇다고
-    해서 우리 DB 의 탈퇴 자체가 막혀선 안 됨.
-    """
     if not settings.kakao_admin_key:
         logger.warning(
             "KAKAO_ADMIN_KEY 가 설정되지 않아 unlink 호출을 스킵합니다. "
@@ -137,10 +100,6 @@ async def unlink_kakao_user(kakao_id: str) -> None:
         if resp.status_code == 200:
             logger.info("Kakao unlink 성공: kakao_id=%s", kakao_id)
         else:
-            # 4xx/5xx — 사용자 탈퇴는 진행하되 무엇이 실패했는지 로그.
-            # 자주 보이는 케이스:
-            #   401 — 어드민 키 잘못됨 (KAKAO_ADMIN_KEY 재확인)
-            #   400 — target_id 형식 오류 또는 이미 unlink 된 사용자
             logger.warning(
                 "Kakao unlink 실패: kakao_id=%s status=%d body=%s",
                 kakao_id,
@@ -152,7 +111,6 @@ async def unlink_kakao_user(kakao_id: str) -> None:
 
 
 async def upsert_kakao_user(profile: dict[str, Any], db: AsyncSession) -> User:
-    """Find or create a User row keyed by the Kakao numeric ``id``."""
     kakao_id = str(profile.get("id"))
     if not kakao_id or kakao_id == "None":
         raise HTTPException(status_code=400, detail="Kakao profile has no id")
@@ -173,9 +131,6 @@ async def upsert_kakao_user(profile: dict[str, Any], db: AsyncSession) -> User:
         )
         db.add(user)
     else:
-        # Refresh nickname/photo from Kakao only if the user hasn't customized
-        # them locally — once a user edits their profile we don't want a
-        # subsequent login to clobber their changes.
         if user.nickname is None and nickname:
             user.nickname = nickname
         if user.photo_url is None and photo_url:

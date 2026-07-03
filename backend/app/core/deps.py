@@ -1,3 +1,5 @@
+"""현재 로그인 유저를 요청에서 추출하는 인증 의존성(get_current_user)."""
+
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -1,3 +1,4 @@
+"""홈 화면 전광판 통계 엔드포인트."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 

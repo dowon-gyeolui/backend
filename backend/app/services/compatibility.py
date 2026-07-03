@@ -1,19 +1,4 @@
-"""궁합 점수 계산 서비스 — rule-based MVP 구현.
-
-점수 모델(결정론적, 0~100, clamp):
-  base                              = 50
-  일간(日干) 오행 관계               = +5 | +10 | -10 | 0
-  일지(日支) 三合(삼합)              = +10
-  일지(日支) 六沖(육충)              = -10
-  주도 오행 상생 관계                = +5
-
-CLAUDE.md 의 MVP 원칙대로 정확도보다 입력에 따라 의미 있게 변하는
-안정 시그널을 제공하는 것이 목표. 추후 RAG 기반 근거(인용 출처)
-부착이 TODO.
-
-동시에 궁합 리포트(AI) 생성, 매칭 카드 후보 선별 등 매칭 도메인의
-상위 로직도 이 모듈에서 다룬다.
-"""
+"""궁합 점수 계산 · AI 리포트 생성 · 매칭 카드 후보 선별을 담당하는 매칭 도메인 핵심 서비스."""
 
 from __future__ import annotations
 
@@ -36,33 +21,28 @@ from app.services.saju import (
     calculate as calculate_saju,
 )
 
-# 五行 productive cycle: a produces b
 _PRODUCES = {
     "wood": "fire", "fire": "earth", "earth": "metal",
     "metal": "water", "water": "wood",
 }
 
-# 五行 controlling cycle: a controls b
 _CONTROLS = {
     "wood": "earth", "fire": "metal", "earth": "water",
     "metal": "wood", "water": "fire",
 }
 
-# 三合 (three harmonies) — earthly-branch trines
 _TRINES: list[frozenset[str]] = [
-    frozenset({"申", "子", "辰"}),  # water trine
-    frozenset({"亥", "卯", "未"}),  # wood trine
-    frozenset({"寅", "午", "戌"}),  # fire trine
-    frozenset({"巳", "酉", "丑"}),  # metal trine
+    frozenset({"申", "子", "辰"}),
+    frozenset({"亥", "卯", "未"}),
+    frozenset({"寅", "午", "戌"}),
+    frozenset({"巳", "酉", "丑"}),
 ]
 
-# Branch names are Korean in our saju model — convert to CJK for trine matching
 _BRANCH_KO_TO_ZH = {
     "자": "子", "축": "丑", "인": "寅", "묘": "卯", "진": "辰", "사": "巳",
     "오": "午", "미": "未", "신": "申", "유": "酉", "술": "戌", "해": "亥",
 }
 
-# 六冲 (six clashes) — unordered pairs
 _CLASH_PAIRS: set[frozenset[str]] = {
     frozenset({"子", "午"}),
     frozenset({"丑", "未"}),
@@ -82,7 +62,6 @@ def _controls(a: str, b: str) -> bool:
 
 
 def _dominant_element(element_profile) -> Optional[str]:
-    """Return the English element key with the highest count (ties → first)."""
     named = [
         ("wood", element_profile.wood), ("fire", element_profile.fire),
         ("earth", element_profile.earth), ("metal", element_profile.metal),
@@ -92,54 +71,43 @@ def _dominant_element(element_profile) -> Optional[str]:
     return name if count > 0 else None
 
 
-# 가감식 raw 점수의 이론적 범위 — base 50 에 일간(±10)·일지(±10)·주도오행(+5)
-# 시그널을 더한 결과라 실제로는 30~75 점에 머문다. 이 구간을 0~100 으로
-# 선형 재보정해 1~6 등급(90/80/70/60/50% 경계)이 모두 도달 가능하게 만든다.
 _RAW_MIN = 30
 _RAW_MAX = 75
 
 
 def calculate(user_a: User, user_b: User) -> CompatibilityScore:
-    """Compute 0..100 compatibility score for two users with birth_date set.
-
-    Caller must ensure both users have birth_date set; ValueError otherwise.
-    """
     saju_a = calculate_saju(user_a)
     saju_b = calculate_saju(user_b)
 
     score = 50
 
-    # --- Day-stem element relationship -------------------------------
-    a_day = saju_a.pillars[2]  # 일주
+    a_day = saju_a.pillars[2]
     b_day = saju_b.pillars[2]
     a_stem_el = _STEM_ELEMENT.get(a_day.stem)
     b_stem_el = _STEM_ELEMENT.get(b_day.stem)
 
     if a_stem_el and b_stem_el:
         if a_stem_el == b_stem_el:
-            score += 5                              # same element
+            score += 5
         elif _produces(a_stem_el, b_stem_el) or _produces(b_stem_el, a_stem_el):
-            score += 10                             # producing (相生)
+            score += 10
         elif _controls(a_stem_el, b_stem_el) or _controls(b_stem_el, a_stem_el):
-            score -= 10                             # controlling (相剋)
+            score -= 10
 
-    # --- Day-branch 三合 / 六冲 --------------------------------------
     a_branch_zh = _BRANCH_KO_TO_ZH.get(a_day.branch)
     b_branch_zh = _BRANCH_KO_TO_ZH.get(b_day.branch)
     if a_branch_zh and b_branch_zh and a_branch_zh != b_branch_zh:
         pair = frozenset({a_branch_zh, b_branch_zh})
         if any(pair <= trine for trine in _TRINES):
-            score += 10                             # 三合
+            score += 10
         elif pair in _CLASH_PAIRS:
-            score -= 10                             # 六冲
+            score -= 10
 
-    # --- Dominant-element productive bonus ---------------------------
     a_dom = _dominant_element(saju_a.element_profile)
     b_dom = _dominant_element(saju_b.element_profile)
     if a_dom and b_dom and (_produces(a_dom, b_dom) or _produces(b_dom, a_dom)):
         score += 5
 
-    # raw(30~75) → 0~100 풀스케일 선형 재보정.
     scaled = round((score - _RAW_MIN) / (_RAW_MAX - _RAW_MIN) * 100)
     score = max(0, min(100, scaled))
 
@@ -171,14 +139,11 @@ def _build_summary(saju_a, saju_b, score: int) -> str:
     )
 
 
-# --- 운명 분석 리포트 --------------------------------------------------
-
 def _name_or_default(user: User) -> str:
     return user.nickname or f"사용자 {user.id}"
 
 
 def _branch_relation(a_branch_ko: Optional[str], b_branch_ko: Optional[str]) -> str:
-    """Return 'trine' | 'clash' | 'same' | 'neutral' for two day-branches."""
     a = _BRANCH_KO_TO_ZH.get(a_branch_ko or "")
     b = _BRANCH_KO_TO_ZH.get(b_branch_ko or "")
     if not a or not b:
@@ -194,7 +159,6 @@ def _branch_relation(a_branch_ko: Optional[str], b_branch_ko: Optional[str]) -> 
 
 
 def _stem_relation(a_stem_el: Optional[str], b_stem_el: Optional[str]) -> str:
-    """Return 'same' | 'produce' | 'control' | 'neutral'."""
     if not a_stem_el or not b_stem_el:
         return "neutral"
     if a_stem_el == b_stem_el:
@@ -211,7 +175,6 @@ def _build_synergy_line(
     a_dom: Optional[str], b_dom: Optional[str],
     stem_rel: str, branch_rel: str,
 ) -> str:
-    """First bullet — what makes the pairing work."""
     a_ko = _ELEMENT_KO.get(a_dom or "") if a_dom else None
     b_ko = _ELEMENT_KO.get(b_dom or "") if b_dom else None
 
@@ -246,7 +209,6 @@ def _build_caution_line(
     a_dom: Optional[str], b_dom: Optional[str],
     stem_rel: str, branch_rel: str,
 ) -> str:
-    """Second bullet — what to watch out for."""
     a_ko = _ELEMENT_KO.get(a_dom or "") if a_dom else None
     b_ko = _ELEMENT_KO.get(b_dom or "") if b_dom else None
 
@@ -272,7 +234,6 @@ def _build_caution_line(
     )
 
 
-# 상대의 주도 오행별 채팅방 선톡·답장 코칭 (AI 실패 시 fallback 3번째 줄).
 _ELEMENT_CHAT_TIP: dict[str, str] = {
     "fire": "불(火)의 기운이 강한 인연이니 밀당은 금물! 답장은 쿨하고 솔직하게 보낼 때 대화가 가장 불타오릅니다.",
     "water": "물(水)의 기운이 깊은 상대라, 가벼운 농담보다 진솔한 속마음을 한 줄 더 건넬 때 마음이 열려요.",
@@ -283,7 +244,6 @@ _ELEMENT_CHAT_TIP: dict[str, str] = {
 
 
 def _build_tip_line(name_b: str, b_dom: Optional[str]) -> str:
-    """Third bullet — 채팅방에서 바로 쓸 수 있는 선톡·답장 실전 팁."""
     if b_dom and b_dom in _ELEMENT_CHAT_TIP:
         return _ELEMENT_CHAT_TIP[b_dom]
     return (
@@ -325,11 +285,6 @@ def _theme_keyword(
 
 
 def build_report(user_a: User, user_b: User) -> CompatibilityReport:
-    """Build a 운명 분석 리포트 for the chat drawer.
-
-    Reuses the same metric sources as `calculate()` but renders them as
-    natural-language bullets + hashtag chips instead of a raw score.
-    """
     saju_a = calculate_saju(user_a)
     saju_b = calculate_saju(user_b)
 
@@ -352,7 +307,6 @@ def build_report(user_a: User, user_b: User) -> CompatibilityReport:
     caution = _build_caution_line(a_dom, b_dom, stem_rel, branch_rel)
     tip = _build_tip_line(name_b, b_dom)
 
-    # Keyword 1 — counterpart's dominant element (= "what their saju brings").
     if b_dom:
         elem_keyword = f"#{_ELEMENT_KO[b_dom]}의_기운"
     elif a_dom:
@@ -366,7 +320,6 @@ def build_report(user_a: User, user_b: User) -> CompatibilityReport:
         _theme_keyword(stem_rel, branch_rel, a_dom, b_dom),
     ]
 
-    # AI 우선 — 실패 시 위 규칙 기반 summary_lines/keywords 로 fallback.
     ai = None
     try:
         from app.services.llm.interpret import generate_compatibility_report
@@ -400,10 +353,7 @@ def build_report(user_a: User, user_b: User) -> CompatibilityReport:
     )
 
 
-# --- candidate matching ----------------------------------------------
-
 def _compute_age(birth_date: Optional[date]) -> Optional[int]:
-    """International age as of today."""
     if birth_date is None:
         return None
     today = date.today()
@@ -415,11 +365,6 @@ def _compute_age(birth_date: Optional[date]) -> Optional[int]:
 
 
 async def _is_primary_face_verified(user: User, db: AsyncSession) -> bool:
-    """후보의 메인 사진이 strict face check 를 통과했는지.
-
-    매칭 카드의 ZAMI 공식 인증 뱃지 표시용. user_photos 테이블에서
-    is_primary=True 인 row 의 is_face_verified 플래그 확인.
-    """
     from app.models.photo import UserPhoto
     primary = (
         await db.execute(
@@ -433,10 +378,6 @@ async def _is_primary_face_verified(user: User, db: AsyncSession) -> bool:
 
 
 async def _candidate_photos(user: User, db: AsyncSession) -> list[str]:
-    """후보가 등록한 전체 사진 URL — position 순. 팝업 캐러셀용.
-
-    primary 사진을 항상 맨 앞에 두고, 나머지는 position 순으로 잇는다.
-    """
     from app.models.photo import UserPhoto
 
     rows = (
@@ -449,16 +390,10 @@ async def _candidate_photos(user: User, db: AsyncSession) -> list[str]:
     return [p.url for p in rows if p.url]
 
 
-# Korea Standard Time — KST 자정(00:00) 기준 계산에 사용.
 _KST = timezone(timedelta(hours=9))
 
 
 def _snap_to_midnight_kst(dt: datetime) -> datetime:
-    """주어진 UTC 시각을 KST 자정(00:00)으로 round-down 해서 UTC 로 반환.
-
-    예: KST 2026-05-01 11:30 → KST 2026-05-01 00:00 → UTC 04-30 15:00
-        KST 2026-05-01 15:30 → KST 2026-05-01 00:00 → UTC 04-30 15:00
-    """
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     kst_dt = dt.astimezone(_KST)
@@ -474,11 +409,6 @@ def _build_card_for(
     is_paid_slot: bool,
     is_face_verified: bool = False,
 ) -> MatchCandidate:
-    """Build a MatchCandidate respecting per-slot photo policy.
-
-    Free slots (0,2): always reveal photo + extras.
-    Paid slots (1,3): photo + extras only if the viewer has paid.
-    """
     is_blinded = is_paid_slot and not viewer_is_paid
 
     card = MatchCandidate(
@@ -502,8 +432,6 @@ def _build_card_for(
             card.mbti = candidate.mbti
             card.bio = candidate.bio
         except Exception:
-            # Saju calc may fail for malformed birth data — keep the card
-            # usable with just the always-visible fields.
             pass
     return card
 
@@ -511,13 +439,6 @@ def _build_card_for(
 async def _candidate_pool(
     current_user: User, db: AsyncSession,
 ) -> list[User]:
-    """Eligible candidates for assignment — same gender filter as live matches.
-
-    얼굴 사진 등록 안 한 사용자는 매칭 풀에서 제외 (option B 정책).
-    photo_url 은 갤러리 primary 사진 url 미러링이므로 NOT NULL =
-    "최소 한 장의 검증된 얼굴 사진을 등록함" 의미.
-    """
-    # 차단 쌍 제외 — 내가 차단했거나 나를 차단한 사용자는 후보에서 뺀다.
     blocked_by_me = select(UserBlock.blocked_id).where(
         UserBlock.blocker_id == current_user.id
     )
@@ -537,5 +458,3 @@ async def _candidate_pool(
     elif current_user.gender == "female":
         stmt = stmt.where(User.gender == "male")
     return list((await db.execute(stmt)).scalars().all())
-
-

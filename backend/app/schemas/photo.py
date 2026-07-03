@@ -1,3 +1,5 @@
+"""사용자 프로필 사진 응답 스키마."""
+
 from datetime import datetime
 from typing import Optional
 

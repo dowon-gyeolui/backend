@@ -1,3 +1,5 @@
+"""일별 AI 텍스트(운세/행동가이드) 캐시 조회 및 생성."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone

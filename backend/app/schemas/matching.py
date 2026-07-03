@@ -1,3 +1,5 @@
+"""오늘의 인연 카드 조회/열람 응답 스키마."""
+
 from typing import Optional
 
 from pydantic import BaseModel
@@ -15,5 +17,5 @@ class UnlockResponse(BaseModel):
     """추가 인연 유료 열람 결과."""
 
     card: MatchCandidate
-    star_balance: int  # 차감 후 잔액
-    extra_unlocked_today: int  # 오늘 추가 열람한 장수 (한도 10)
+    star_balance: int
+    extra_unlocked_today: int

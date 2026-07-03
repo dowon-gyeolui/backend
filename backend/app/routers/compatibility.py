@@ -1,3 +1,4 @@
+"""두 사용자 간 궁합 리포트 조회 엔드포인트."""
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 

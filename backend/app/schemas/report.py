@@ -1,3 +1,5 @@
+"""사용자 신고 생성/응답 스키마."""
+
 from datetime import datetime
 from typing import Literal, Optional
 

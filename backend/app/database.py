@@ -1,3 +1,5 @@
+"""DB 엔진/세션 초기화와 개발용 스키마 자동 마이그레이션(_DEV_COLUMNS)."""
+
 from typing import AsyncGenerator
 from uuid import uuid4
 
@@ -7,15 +9,6 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
 
-# Supabase Transaction 풀러(포트 6543) 대상 설정.
-# - statement_cache_size=0 + prepared_statement_cache_size=0: 트랜잭션 풀러는
-#   여러 클라이언트가 같은 백엔드 세션을 공유하므로 prepared statement 캐시를
-#   켜면 충돌/소실 에러가 난다. asyncpg·SQLAlchemy 양쪽 캐시를 끈다.
-# - prepared_statement_name_func: 캐시를 꺼도 asyncpg 는 `__asyncpg_stmt_1__`
-#   같은 카운터 이름을 재사용해 백엔드 공유 시 DuplicatePreparedStatementError
-#   가 난다. 매번 UUID 로 고유한 이름을 줘 충돌을 원천 차단한다.
-# - 작은 고정 풀 + pre_ping + recycle: 풀러가 idle 연결을 끊어도 자동 복구하고,
-#   동시 연결 수를 풀러 한도 안으로 묶어 EMAXCONNSESSION 을 막는다.
 _engine_kwargs: dict = {"echo": settings.debug}
 if settings.database_url.startswith("postgresql"):
     _engine_kwargs.update(
@@ -67,7 +60,6 @@ _DEV_COLUMNS: list[tuple[str, str, str]] = [
 ]
 
 async def _dev_migrate_sqlite(conn) -> None:
-    """Add missing columns on SQLite. PRAGMA-based existence check."""
     for table, column, ddl in _DEV_COLUMNS:
         result = await conn.execute(text(f"PRAGMA table_info({table})"))
         existing = {row[1] for row in result.fetchall()}
@@ -75,16 +67,9 @@ async def _dev_migrate_sqlite(conn) -> None:
             await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
 
 async def _dev_migrate_postgres() -> None:
-    """Add missing columns on PostgreSQL using IF NOT EXISTS (PG 9.6+).
-
-    각 ALTER 를 독립 트랜잭션 + 짧은 lock_timeout 으로 실행하고, 락 경합/타임아웃은
-    건너뛴다. 이미 존재하는 컬럼이면 no-op 이라 실패해도 안전하며, startup 이
-    DDL 락(ACCESS EXCLUSIVE) 대기로 막혀 배포가 죽는 것을 방지한다.
-    """
     for table, column, ddl in _DEV_COLUMNS:
         try:
             async with engine.begin() as conn:
-                # 락을 못 잡으면 3초 안에 빠르게 실패 → 아래 except 로 스킵.
                 await conn.execute(text("SET LOCAL lock_timeout = '3s'"))
                 await conn.execute(
                     text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}")
@@ -93,10 +78,8 @@ async def _dev_migrate_postgres() -> None:
             print(f"[init_db] skip ALTER {table}.{column}: {exc}", flush=True)
 
 async def init_db() -> None:
-    """Create all tables + apply dev column patches. Called once at startup."""
     import app.models
 
-    # 테이블 생성(새 테이블 포함)은 독립 트랜잭션으로 먼저 커밋한다.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

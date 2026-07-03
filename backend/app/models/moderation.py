@@ -1,3 +1,5 @@
+"""사용자 제재(스트라이크) 기록 모델(UserStrike)."""
+
 from datetime import datetime, timezone
 
 from sqlalchemy import (

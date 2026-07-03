@@ -1,22 +1,4 @@
-"""지식 검색 — 벡터 유사도 우선, 키워드 폴백.
-
-호출당 결정 트리:
-  1. 기본 필터(source_type / topic / language)로 후보 집합 구성.
-  2. 후보 중 임베딩 보유 청크가 하나라도 있으면:
-       - OpenAI 로 쿼리 임베딩 생성
-       - 파이썬에서 cosine similarity 계산
-       - top_k 반환, match_reason = "vector_similarity"
-  3. 그 외엔 content/topic 키워드 LIKE 검색:
-       - top_k 반환, match_reason = "keyword_match"
-  4. 그것도 없으면 placeholder 결과(Swagger 가 빈 DB 에서도 동작).
-
-불변:
-  모든 결과는 source_citation 을 포함해 호출자가 출처를 표시할 수 있다.
-
-향후 업그레이드(호출부 변경 없이):
-  2단계가 `ORDER BY embedding <=> query_vec LIMIT top_k` 로 바뀜
-  (pgvector 도입 시).
-"""
+"""지식 검색 — 벡터 유사도 우선, 실패 시 키워드 검색, 그 외 placeholder 폴백."""
 
 from __future__ import annotations
 
@@ -36,8 +18,6 @@ from app.services.knowledge.embedding import embed_text
 
 
 def _build_citation(chunk: KnowledgeChunk) -> str:
-    # Containment order: book → chapter → section. `topic` is a cross-book
-    # retrieval category so it appears last when present.
     parts = [f"《{chunk.source_title}》"]
     if chunk.chapter:
         parts.append(chunk.chapter)
@@ -75,7 +55,6 @@ async def retrieve(
     query: KnowledgeQuery,
     db: AsyncSession,
 ) -> list[KnowledgeRetrievalResult]:
-    # --- 1) Vector path -----------------------------------------------
     vector_stmt = _apply_filters(
         select(KnowledgeChunk).where(KnowledgeChunk.embedding.is_not(None)),
         query,
@@ -106,7 +85,6 @@ async def retrieve(
                 for chunk, score in top
             ]
 
-    # --- 2) Keyword fallback ------------------------------------------
     keyword_stmt = _apply_filters(select(KnowledgeChunk), query)
     keyword = query.query.strip()
     if keyword:
@@ -131,7 +109,6 @@ async def retrieve(
             for chunk in rows
         ]
 
-    # --- 3) Empty-DB placeholder --------------------------------------
     return _placeholder_results(query)
 
 

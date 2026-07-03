@@ -1,3 +1,5 @@
+"""채팅 스레드/메시지 요청·응답 스키마."""
+
 from datetime import datetime
 from typing import Optional
 
@@ -10,7 +12,7 @@ class MessageOut(BaseModel):
     sender_id: int
     content: str
     media_url: Optional[str] = None
-    media_type: Optional[str] = None  # "image" | "audio"
+    media_type: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

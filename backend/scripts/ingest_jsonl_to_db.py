@@ -29,15 +29,12 @@ import asyncio
 import sys
 from pathlib import Path
 
-# Allow `python scripts/ingest_jsonl_to_db.py` to import from `app.*`
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
 from scripts._helpers import load_env_file, load_jsonl  # noqa: E402
 
-# Load backend/.env before importing anything that reads env vars (e.g. DB URL,
-# OPENAI_API_KEY). pydantic-settings only loads .env inside the FastAPI app.
 load_env_file(_BACKEND_ROOT)
 
 from sqlalchemy import select  # noqa: E402
@@ -95,7 +92,6 @@ async def _run(input_path: Path, batch_size: int) -> int:
     failed = 0
 
     async with AsyncSessionLocal() as db:
-        # Split into (insert) vs (skip-duplicate) by checking content_hash
         rows_to_insert: list[dict] = []
         for row in rows:
             h = row.get("content_hash")
@@ -112,7 +108,6 @@ async def _run(input_path: Path, batch_size: int) -> int:
             else:
                 rows_to_insert.append(row)
 
-        # Batch-embed, insert, commit per batch (progress is persisted)
         for i in range(0, len(rows_to_insert), batch_size):
             batch = rows_to_insert[i : i + batch_size]
             inputs = [

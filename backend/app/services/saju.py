@@ -1,22 +1,4 @@
-"""사주 계산 서비스 — placeholder 구현(단순 모듈러).
-
-각 기둥(년/월/일/시)을 출생일에 대한 간단한 modular arithmetic 으로
-계산한다. 입력에 따라 결과가 변하고 구조도 정통 사주와 같지만
-실제로 정확한 정통 계산은 아니다.
-
-교체 지점은 TODO 주석으로 표시:
-  - _year_pillar:    정통 60갑자 엔진(saju_engine.py 사용)
-  - _month_pillar:   24절기 기반 월주
-  - _day_pillar:     정확한 일주 룩업
-  - _time_pillar:    五鼠遁日法 으로 시간(時) 천간
-  - _element_profile: 지지 오행까지 포함한 분포
-
-본격 구현은 services/saju_engine.py 에 있으며, 신규 호출은 그쪽을
-쓰도록 점진적으로 이전 중.
-"""
-
-from datetime import date as DateType
-from typing import Optional
+"""사주(사주팔자) 계산 및 원전 RAG 기반 해석·자미두수 풀이 서비스."""
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,18 +10,14 @@ from app.schemas.saju import (
     SajuResponse,
 )
 
-# Five-element Korean name (used when building retrieval queries)
 _ELEMENT_KO = {
     "wood": "목", "fire": "화", "earth": "토", "metal": "금", "water": "수",
 }
 
-# 10 heavenly stems (천간)
 _STEMS = ["갑", "을", "병", "정", "무", "기", "경", "신", "임", "계"]
 
-# 12 earthly branches (지지)
 _BRANCHES = ["자", "축", "인", "묘", "진", "사", "오", "미", "신", "유", "술", "해"]
 
-# Five-element mapping for each heavenly stem
 _STEM_ELEMENT: dict[str, str] = {
     "갑": "wood", "을": "wood",
     "병": "fire", "정": "fire",
@@ -49,64 +27,6 @@ _STEM_ELEMENT: dict[str, str] = {
 }
 
 _UNKNOWN = "미상"
-
-# Reference date for day pillar offset (approximate 갑자일)
-_DAY_REFERENCE = DateType(1900, 1, 1)
-_DAY_REFERENCE_OFFSET = 6  # rough alignment offset
-
-
-def _year_pillar(year: int) -> Pillar:
-    # TODO: Replace with certified 60-cycle 사주 engine
-    stem = _STEMS[(year - 4) % 10]
-    branch = _BRANCHES[(year - 4) % 12]
-    return Pillar(label="년주", stem=stem, branch=branch, combined=stem + branch)
-
-
-def _month_pillar(year: int, month: int) -> Pillar:
-    # TODO: Replace with 절기 (solar term) based month pillar calculation
-    # Simplified: month branch shifts by month, stem derived from year stem group
-    branch = _BRANCHES[(month + 1) % 12]
-    year_stem_idx = (year - 4) % 10
-    stem = _STEMS[(year_stem_idx % 5 * 2 + (month - 1)) % 10]
-    return Pillar(label="월주", stem=stem, branch=branch, combined=stem + branch)
-
-
-def _day_pillar(birth_date: DateType) -> Pillar:
-    # TODO: Replace with authoritative day pillar lookup or calculation table
-    days = (birth_date - _DAY_REFERENCE).days
-    stem = _STEMS[(days + _DAY_REFERENCE_OFFSET) % 10]
-    branch = _BRANCHES[(days + _DAY_REFERENCE_OFFSET) % 12]
-    return Pillar(label="일주", stem=stem, branch=branch, combined=stem + branch)
-
-
-def _time_pillar(birth_time: Optional[str], day_stem: str) -> Pillar:
-    if birth_time is None:
-        return Pillar(
-            label="시주",
-            stem=_UNKNOWN,
-            branch=_UNKNOWN,
-            combined=_UNKNOWN,
-        )
-    hour = int(birth_time.split(":")[0])
-    # Each 지지 covers a two-hour window; 자시 starts at 23:00
-    branch_index = (hour + 1) // 2 % 12
-    branch = _BRANCHES[branch_index]
-    # TODO: Apply 五鼠遁日法 for correct time stem derivation
-    day_stem_idx = _STEMS.index(day_stem) if day_stem in _STEMS else 0
-    stem = _STEMS[(day_stem_idx % 5 * 2 + branch_index // 2) % 10]
-    return Pillar(label="시주", stem=stem, branch=branch, combined=stem + branch)
-
-
-def _element_profile(pillars: list[Pillar]) -> ElementProfile:
-    # TODO: Include earthly branch (지지) elements for a full 8-character analysis
-    counts: dict[str, int] = {
-        "wood": 0, "fire": 0, "earth": 0, "metal": 0, "water": 0
-    }
-    for pillar in pillars:
-        element = _STEM_ELEMENT.get(pillar.stem)
-        if element:
-            counts[element] += 1
-    return ElementProfile(**counts)
 
 
 def _korean_summary(ep: ElementProfile) -> str:
@@ -131,16 +51,6 @@ def _korean_summary(ep: ElementProfile) -> str:
 
 
 def calculate(user: User) -> SajuResponse:
-    """Real 60-cycle saju calculation backed by ``services.saju_engine``.
-
-    Computes:
-      - 년주: 입춘(立春) 기준
-      - 월주: 12절(節)로 月支 + 五虎遁으로 月干
-      - 일주: 1900-01-31 갑진일 기준점에서 일수 차이로 60갑자 순환
-      - 시주: 12 시진 매핑 + 五鼠遁으로 時干
-    Element distribution counts both 천간(stem) and 지지(branch) — 8자 분석.
-    Raises ValueError if birth_date is not set (caller should return HTTP 400).
-    """
     if user.birth_date is None:
         raise ValueError("birth_date is required for saju calculation")
 
@@ -160,7 +70,6 @@ def calculate(user: User) -> SajuResponse:
 
     def to_pillar(label: str, p: tuple[str, str] | None) -> Pillar:
         if p is None:
-            # 시주 미상
             return Pillar(label=label, stem=_UNKNOWN, branch=_UNKNOWN, combined=_UNKNOWN)
         stem, branch = p
         return Pillar(label=label, stem=stem, branch=branch, combined=stem + branch)
@@ -172,8 +81,6 @@ def calculate(user: User) -> SajuResponse:
         to_pillar("시주", fp.time),
     ]
 
-    # Enrich each pillar with chart fields (십성·지장간·12운성·12신살).
-    # 일간 = pillars[2].stem; 년지 = pillars[0].branch.
     from app.services.saju_chart import (
         BRANCH_INFO,
         HIDDEN_STEMS,
@@ -193,7 +100,6 @@ def calculate(user: User) -> SajuResponse:
             p.stem_hanja = si["hanja"]
             p.stem_element = si["element"]
             p.stem_polarity = si["polarity"]
-            # 일주의 일간 자체는 비견(자기 자신)이라 표시하지 않음.
             if day_stem in STEM_INFO and i != 2:
                 p.stem_ten_god = ten_god(day_stem, p.stem)
         if p.branch in BRANCH_INFO:
@@ -229,10 +135,7 @@ def calculate(user: User) -> SajuResponse:
     )
 
 
-# --- Retrieval-grounded enrichment -----------------------------------
-
 def _build_retrieval_queries(saju: SajuResponse) -> list[str]:
-    """Extract key signals from the saju result into retrieval queries."""
     queries: list[str] = []
 
     ep = saju.element_profile
@@ -244,7 +147,6 @@ def _build_retrieval_queries(saju: SajuResponse) -> list[str]:
     if dominant_count > 0:
         queries.append(f"{dominant_name} 오행 성질 특징")
 
-    # Day pillar — index 2 is 일주
     day_pillar = saju.pillars[2]
     if day_pillar.stem in _STEMS:
         element_key = _STEM_ELEMENT[day_pillar.stem]
@@ -258,18 +160,6 @@ async def enrich_with_interpretation(
     saju: SajuResponse,
     db: AsyncSession,
 ) -> SajuResponse:
-    """Attach retrieval-grounded citations + LLM-generated interpretation.
-
-    Flow:
-      1. Build retrieval queries from dominant element + day pillar.
-      2. Call vector search; collect unique citations + source passages.
-      3. If at least one vector_similarity result exists → set status="ready".
-      4. Pass passages to the LLM interpreter (best-effort, failures swallowed).
-
-    Only vector_similarity matches count — keyword/placeholder results do NOT
-    flip status to "ready".
-    """
-    # Local imports to avoid module-load-time cycles.
     from app.schemas.knowledge import KnowledgeQuery
     from app.services.knowledge.retrieval import retrieve
     from app.services.llm.interpret import (
@@ -290,14 +180,12 @@ async def enrich_with_interpretation(
             if r.match_reason != "vector_similarity" or r.chunk.id == 0:
                 continue
             citations.append(r.source_citation)
-            # Deduplicate by citation — one passage per source-chapter-section.
             if r.source_citation not in passages_by_citation:
                 passages_by_citation[r.source_citation] = RetrievedPassage(
                     citation=r.source_citation,
                     content=r.chunk.content or "",
                 )
 
-    # Preserve first-seen order for citations.
     seen: set[str] = set()
     unique_citations: list[str] = []
     for c in citations:
@@ -306,12 +194,11 @@ async def enrich_with_interpretation(
             unique_citations.append(c)
 
     if not unique_citations:
-        return saju  # status stays "pending"
+        return saju
 
     saju.interpretation_sources = unique_citations
     saju.interpretation_status = "ready"
 
-    # LLM call is best-effort — if it fails, the UI still has the citations.
     ordered_passages = [passages_by_citation[c] for c in unique_citations]
     saju.interpretation = generate_saju_interpretation(saju, ordered_passages)
 
@@ -322,12 +209,6 @@ async def enrich_with_detailed_interpretation(
     saju: "SajuResponse",
     db: "AsyncSession",
 ):
-    """Like ``enrich_with_interpretation`` but produces a 5-section
-    interpretation (성격/연애/재물/건강/조언). Returns DetailedSajuResponse.
-
-    Falls back to empty section strings when the LLM fails or no passages
-    match — the frontend renders graceful placeholders for empties.
-    """
     from app.schemas.knowledge import KnowledgeQuery
     from app.schemas.saju import DetailedSajuResponse
     from app.services.knowledge.retrieval import retrieve
@@ -367,7 +248,7 @@ async def enrich_with_detailed_interpretation(
     )
 
     if not unique_citations:
-        return base  # all sections stay empty, status pending
+        return base
 
     base.interpretation_sources = unique_citations
     base.interpretation_status = "ready"
@@ -384,13 +265,6 @@ async def enrich_with_detailed_interpretation(
 
 
 def build_jamidusu_for(user: User) -> "JamidusuResponse":
-    """자미두수 12궁·14주성 LLM 풀이.
-
-    Unlike the saju endpoints, 자미두수 doesn't use the RAG corpus —
-    we don't have classical 자미두수 passages indexed yet. The LLM is
-    seeded entirely from the user's saju, which is acceptable for the
-    paid drawer until a proper 자미두수 calc engine + corpus lands.
-    """
     from app.schemas.saju import JamidusuPalace, JamidusuResponse
     from app.services.llm.interpret import generate_jamidusu_interpretation
 
@@ -399,7 +273,7 @@ def build_jamidusu_for(user: User) -> "JamidusuResponse":
 
     sections = generate_jamidusu_interpretation(saju)
     if not sections:
-        return result  # status stays "pending"
+        return result
 
     result.overview = sections.get("overview", "")
     result.main_stars_summary = sections.get("main_stars_summary", "")
@@ -412,11 +286,7 @@ def build_jamidusu_for(user: User) -> "JamidusuResponse":
     return result
 
 
-# ─── 자미두수 Deep — 결정론 차트 + 사주 + RAG 융합 ──────────────────
-
-
 def _chart_to_dict(chart: "JamidusuChart") -> dict:
-    """JamidusuChart dataclass → dict (LLM 프롬프트에 직렬화하기 위함)."""
     return {
         "lunar_year": chart.lunar_year,
         "lunar_month": chart.lunar_month,
@@ -452,7 +322,6 @@ def _chart_to_dict(chart: "JamidusuChart") -> dict:
 
 
 def _build_jamidusu_retrieval_queries(saju: SajuResponse) -> list[str]:
-    """자미두수전서 + 궁통보감 모두 노릴 검색어 — 일주/일간/오행 키워드."""
     day_pillar = saju.pillars[2]
     queries = [
         f"{day_pillar.combined} 일주 자미두수",
@@ -467,19 +336,10 @@ async def build_jamidusu_deep_for(
     user: "User",
     db: "AsyncSession",
 ):
-    """결정론 차트 + RAG passages + LLM → 사주+자미두수 융합 풀이.
-
-    Pipeline:
-      1. compute_chart() — 12궁×별 deterministic
-      2. retrieve(...) — 자미두수전서 / 궁통보감 RAG
-      3. generate_jamidusu_deep() — gpt-4o 단일 콜
-      4. 응답 매핑 — JamidusuDeepResponse
-    """
     from app.schemas.knowledge import KnowledgeQuery
     from app.schemas.saju import (
         JamidusuDeepPalace,
         JamidusuDeepResponse,
-        JamidusuDeepSections,
         JamidusuDeepStar,
     )
     from app.services.jamidusu import compute_chart
@@ -492,7 +352,6 @@ async def build_jamidusu_deep_for(
     if user.birth_date is None:
         return JamidusuDeepResponse(user_id=user.id, interpretation_status="pending")
 
-    # 1. 차트 계산
     try:
         chart = compute_chart(
             user.birth_date,
@@ -506,10 +365,8 @@ async def build_jamidusu_deep_for(
 
     chart_dict = _chart_to_dict(chart)
 
-    # 2. 사주 (검색 쿼리 생성용)
     saju = calculate(user)
 
-    # 3. RAG 검색
     queries = _build_jamidusu_retrieval_queries(saju)
     passages_by_citation: dict[str, RetrievedPassage] = {}
     citations: list[str] = []
@@ -536,7 +393,6 @@ async def build_jamidusu_deep_for(
             unique_citations.append(c)
     ordered_passages = [passages_by_citation[c] for c in unique_citations]
 
-    # 4. 항상 차트는 응답에 포함 (LLM 실패해도 12궁×별 보임)
     palaces_response = [
         JamidusuDeepPalace(
             name=p.name,
@@ -551,7 +407,7 @@ async def build_jamidusu_deep_for(
                 )
                 for s in p.stars
             ],
-            description="",  # LLM 결과 채울 자리
+            description="",
         )
         for p in chart.palaces
     ]
@@ -570,14 +426,11 @@ async def build_jamidusu_deep_for(
         sources=unique_citations,
     )
 
-    # 5. LLM 호출
     llm_result = generate_jamidusu_deep(saju, chart_dict, ordered_passages)
     if llm_result is None:
-        # LLM 실패. 차트는 보여주되 풀이만 비어있음.
         response.interpretation_status = "partial"
         return response
 
-    # 6. LLM 결과 매핑 — 12궁 새 필드 채움
     palace_data_by_ko: dict[str, dict] = {
         p["name_ko"]: p
         for p in (llm_result.get("palaces") or [])

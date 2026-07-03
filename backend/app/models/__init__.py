@@ -1,3 +1,5 @@
+"""SQLAlchemy Base.metadata 등록을 위한 모델 re-export 모음."""
+
 from app.models.block import UserBlock
 from app.models.card_unlock import CardUnlock
 from app.models.daily_ai_text import DailyAiText

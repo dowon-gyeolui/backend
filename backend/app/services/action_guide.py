@@ -1,3 +1,5 @@
+"""사주 기반 오늘의 행동 가이드(옷차림/태도/마음가짐 3줄) 생성."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -22,7 +24,6 @@ from app.services.daily_ai import get_or_create_daily_text
 _KST = timezone(timedelta(hours=9))
 
 
-# 십성 관계별 "행동 톤". 옷차림/태도/마음가짐 관점, 존대 + 제안형.
 _ATTITUDE_BY_RELATION: dict[str, str] = {
     "비견": "익숙한 분들 사이에서 편안하게 본인 결을 보여주시면 좋겠어요",
     "겁재": "한 발 먼저 다가가는 적극적인 모습은 어떠신가요",
@@ -37,7 +38,6 @@ _ATTITUDE_BY_RELATION: dict[str, str] = {
     "—": "평소처럼 자연스럽게 임하시면 충분할 것 같아요",
 }
 
-# 오행별 행동 분위기 (마음가짐). 존대 + 제안형.
 _MOOD_BY_ELEMENT: dict[str, str] = {
     "wood":  "여유로운 마음으로 천천히 흐름을 따라가보시는 건 어떨까요",
     "fire":  "밝고 활기찬 에너지를 풍겨보시면 인상이 한층 좋아질 거예요",
@@ -57,10 +57,6 @@ def _mood_for(element: Optional[str]) -> str:
 
 
 def build_action_guide(user: User) -> Optional[dict]:
-    """사주 기반 행동 가이드 — 3줄 산문 반환.
-
-    응답: {"text": "<3줄 글>"}
-    """
     if user.birth_date is None:
         return None
 
@@ -73,20 +69,17 @@ def build_action_guide(user: User) -> Optional[dict]:
     user_day_stem = user_day.stem
     el = saju.element_profile
 
-    # 용신 추정
     counts = {
         "wood": el.wood, "fire": el.fire, "earth": el.earth,
         "metal": el.metal, "water": el.water,
     }
     yongsin, _kisin = estimate_yongsin_kisin(counts)
 
-    # 오늘 일간
     today_kst = datetime.now(_KST).date()
     today_stem, today_branch = _day_pillar(today_kst)
     today_el = stem_element(today_stem)
     target = yongsin or today_el
 
-    # 사용자 일간 ↔ 오늘 일간 십성 (행동 톤 결정)
     relation = ten_god(user_day_stem, today_stem)
     if relation == "—":
         relation = branch_ten_god(user_day_stem, today_branch)
@@ -99,10 +92,6 @@ def build_action_guide(user: User) -> Optional[dict]:
     attitude = _ATTITUDE_BY_RELATION.get(relation, _ATTITUDE_BY_RELATION["—"])
     mood = _mood_for(target)
 
-    # 3줄 자연스러운 산문, 존대 + 제안형:
-    # Line 1: 옷차림 제안
-    # Line 2: 태도 제안 (관계별 톤)
-    # Line 3: 마음가짐 / 분위기 제안
     text = (
         f'"{call_name}, 오늘은 {fashion} 톤에 {color} 포인트를 살짝 더해보시는 건 어떠신가요?\n'
         f"{attitude}.\n"

@@ -1,20 +1,4 @@
-"""Seed demo users for the matching showcase.
-
-Idempotent — re-running skips users whose ``kakao_id`` already exists.
-
-Usage
------
-    # local SQLite
-    python scripts/seed_demo_users.py
-
-    # production Render PostgreSQL (one-shot, doesn't touch .env)
-    $env:DATABASE_URL = "postgresql+asyncpg://..."
-    python scripts/seed_demo_users.py
-
-Seeds a single demo user (신시아) using the local ``/cynthia.png`` portrait so
-cards render. ``is_paid`` is set True so the matching API doesn't blind the
-photo when the calling user (free tier) requests candidates.
-"""
+"""매칭 쇼케이스용 데모 유저(신시아)를 시드하는 idempotent 스크립트."""
 
 from __future__ import annotations
 
@@ -23,7 +7,6 @@ import sys
 from datetime import date
 from pathlib import Path
 
-# Allow importing app.* when run from anywhere
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
@@ -51,7 +34,6 @@ DEMO_USERS: list[dict] = [
 
 
 async def seed() -> None:
-    # Ensure schema exists (no-op on already-migrated DB)
     await init_db()
 
     created = 0
@@ -76,7 +58,7 @@ async def seed() -> None:
                 calendar_type="solar",
                 is_leap_month=False,
                 photo_url=data["photo_url"],
-                is_paid=True,  # show photos in matches without blind policy
+                is_paid=True,
             )
             db.add(user)
             created += 1

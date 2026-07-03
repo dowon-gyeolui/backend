@@ -1,8 +1,4 @@
-"""Admin: 특정 닉네임 사용자의 차단을 해제한다.
-
-사용법:
-    python -m scripts.unblock_user 신시아
-"""
+"""Admin: 특정 닉네임 사용자의 차단(user_blocks)을 해제하고 채팅방 left 플래그를 복원."""
 
 from __future__ import annotations
 
@@ -28,7 +24,6 @@ from app.models.user import User  # noqa: E402
 
 async def main(nickname: str) -> None:
     async with AsyncSessionLocal() as db:
-        # 1. 유저 조회
         user = (
             await db.execute(select(User).where(User.nickname == nickname))
         ).scalar_one_or_none()
@@ -39,7 +34,6 @@ async def main(nickname: str) -> None:
 
         print(f"[INFO] 찾은 유저: id={user.id} nickname={user.nickname} kakao={user.kakao_id}")
 
-        # 2. user_blocks 조회 (양방향)
         blocks = (
             await db.execute(
                 select(UserBlock).where(
@@ -65,7 +59,6 @@ async def main(nickname: str) -> None:
         else:
             print("  user_blocks 레코드 없음.")
 
-        # 3. chat_threads — user_x_left 플래그 복원
         threads = (
             await db.execute(
                 select(ChatThread).where(

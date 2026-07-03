@@ -1,3 +1,5 @@
+"""오늘의 인연운(사주 일진 기반 다중 섹션 운세) 계산 서비스."""
+
 from __future__ import annotations
 
 import logging
@@ -17,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.daily_ai import get_or_create_daily_text
 from app.services.saju_engine import _day_pillar
 from app.services.saju_enrichment import (
-    branch_element,
     branch_relation,
     color_for,
     estimate_yongsin_kisin,
@@ -41,23 +42,18 @@ _ELEMENT_KO = {
 
 @dataclass
 class TodayFortune:
-    """API 응답 — 오늘의 인연운 (multi-section)."""
+    fortune_text: str
+    today_pillar: str
+    today_pillar_hanja: str
+    relation: str
+    element_today: str
+    score: int
+    person_type: str = ""
+    timing: str = ""
+    place: str = ""
+    lucky_color: str = ""
+    badges: list[str] = field(default_factory=list)
 
-    fortune_text: str             # 메인 한국어 문구 (반말)
-    today_pillar: str             # 오늘의 일주 (예: "갑술")
-    today_pillar_hanja: str       # 한자 (예: "甲戌")
-    relation: str                 # 사용자 ↔ 오늘의 십성
-    element_today: str            # 오늘 일간의 오행 한국어
-    score: int                    # 1~5 별점
-    # 세부 섹션 — 프론트가 펼쳐 보여줄 수 있게 분리.
-    person_type: str = ""         # 만나는 사람 성향
-    timing: str = ""              # 좋은 시간대
-    place: str = ""               # 좋은 장소 분위기
-    lucky_color: str = ""         # 행운 색상
-    badges: list[str] = field(default_factory=list)  # ['도화 발동', '천을귀인'] 같은 강조 칩
-
-
-# --- 십성별 메인 헤드라인 (반말) -----------------------------------------
 
 _HEADLINE_BY_RELATION: dict[str, list[str]] = {
     "비견": [
@@ -106,7 +102,6 @@ _HEADLINE_BY_RELATION: dict[str, list[str]] = {
     ],
 }
 
-# 십성별 만나는 사람 성향 (존대용 명사구)
 _PERSON_TYPE_BY_RELATION: dict[str, str] = {
     "비견": "비슷한 결을 가진 친근한 분",
     "겁재": "활발하고 추진력 있는 분",
@@ -121,7 +116,6 @@ _PERSON_TYPE_BY_RELATION: dict[str, str] = {
     "—": "마음 편한 분",
 }
 
-# 십성별 인연 운 강도
 _RELATION_SCORE: dict[str, int] = {
     "정재": 5, "편재": 5,
     "정관": 5, "편관": 4,
@@ -131,9 +125,8 @@ _RELATION_SCORE: dict[str, int] = {
     "—": 3,
 }
 
-# 충/합 보정 (점수 + 메시지)
+
 def _adjust_for_branch_relation(rel: str) -> tuple[int, Optional[str], Optional[str]]:
-    """(score_delta, badge, caution_text)"""
     if rel == "삼합":
         return +1, "삼합 길일", None
     if rel == "합":
@@ -143,11 +136,6 @@ def _adjust_for_branch_relation(rel: str) -> tuple[int, Optional[str], Optional[
     return 0, None, None
 
 
-def today_day_pillar_kst() -> tuple[str, str]:
-    today = datetime.now(_KST).date()
-    return _day_pillar(today)
-
-
 def _hanja_pillar(stem: str, branch: str) -> str:
     s = STEM_INFO.get(stem, {}).get("hanja", "")
     b = BRANCH_INFO.get(branch, {}).get("hanja", "")
@@ -155,10 +143,6 @@ def _hanja_pillar(stem: str, branch: str) -> str:
 
 
 def compute_today_fortune(user: User) -> Optional[TodayFortune]:
-    """사용자 사주 + 오늘 일진 → 풍부한 인연운 객체.
-
-    user.birth_date 가 없으면 None.
-    """
     if user.birth_date is None:
         return None
 
@@ -173,11 +157,9 @@ def compute_today_fortune(user: User) -> Optional[TodayFortune]:
     user_day_branch = user_day.branch
     user_elements = user_saju.element_profile
 
-    # 오늘 일주
     today_kst = datetime.now(_KST).date()
     today_stem, today_branch = _day_pillar(today_kst)
 
-    # 십성 관계 (천간 우선, 실패 시 지지 본기)
     relation = ten_god(user_day_stem, today_stem)
     if relation == "—":
         relation = branch_ten_god(user_day_stem, today_branch)
@@ -186,7 +168,6 @@ def compute_today_fortune(user: User) -> Optional[TodayFortune]:
     badges: list[str] = []
     cautions: list[str] = []
 
-    # 일지 충/합/삼합 보정
     branch_rel = branch_relation(user_day_branch, today_branch)
     delta, badge, caution = _adjust_for_branch_relation(branch_rel)
     base_score += delta
@@ -195,23 +176,19 @@ def compute_today_fortune(user: User) -> Optional[TodayFortune]:
     if caution:
         cautions.append(caution)
 
-    # 도화 발동
     if is_dohwa_day(user_day_branch, today_branch):
         badges.append("도화 발동")
         base_score += 1
 
-    # 천을귀인
     if is_cheoneul_day(user_day_stem, today_branch):
         badges.append("천을귀인 길일")
         base_score += 1
 
     score = max(1, min(5, base_score))
 
-    # 닉네임 — 성 빼고 ~님 붙임 (예: "박양희" → "양희님")
     raw_nickname = (user.nickname or "").strip() or "고객"
     call_name = korean_polite_name(raw_nickname)
 
-    # seed 기반 결정론적 선택
     seed = today_kst.toordinal() ^ ((user.id or 0) * 2654435761) & 0xFFFFFFFF
 
     headline_pool = _HEADLINE_BY_RELATION.get(
@@ -221,7 +198,6 @@ def compute_today_fortune(user: User) -> Optional[TodayFortune]:
 
     person_type = _PERSON_TYPE_BY_RELATION.get(relation, "마음 편한 사람")
 
-    # 시간대 / 장소 추천 — 사용자 용신 우선, 없으면 오늘 일간 오행
     counts = {
         "wood": user_elements.wood, "fire": user_elements.fire,
         "earth": user_elements.earth, "metal": user_elements.metal,
@@ -235,7 +211,6 @@ def compute_today_fortune(user: User) -> Optional[TodayFortune]:
     place = place_for(target_el) if target_el else "조용한 카페"
     lucky_color = color_for(target_el) if target_el else "흰색"
 
-    # caution 문구 (존대 + 제안형)
     if cautions:
         caution_text = " · ".join(cautions)
     elif relation in ("편관", "겁재"):

@@ -1,25 +1,4 @@
-"""Render Postgres → Supabase 일회용 마이그레이션 스크립트.
-
-전제:
-- 양쪽 DB 모두 init_db() 가 한 번 이상 돌아 테이블 스키마가 존재해야 함.
-- 대상(Supabase)은 비어 있어도 되고, 일부 데이터가 있어도 됨 (ON CONFLICT DO NOTHING).
-
-사용법 (PowerShell):
-    cd c:\\Users\\ympyh\\OneDrive\\Desktop\\jamidusu\\backend\\backend
-    .\\.venv\\Scripts\\activate
-    $env:RENDER_DATABASE_URL = "postgresql://user:pass@dpg-xxx.singapore-postgres.render.com/dbname"
-    python scripts/migrate_render_to_supabase.py
-    # 끝나면 RENDER_DATABASE_URL 변수는 셸 종료 시 자동 소멸.
-
-대상(Supabase) URL 은 .env 의 DATABASE_URL 에서 자동 로드.
-
-특성:
-- idempotent: 같은 row 가 이미 존재하면 ON CONFLICT DO NOTHING 으로 스킵
-- FK 의존성 순서대로 테이블 처리
-- 모든 테이블 마이그레이션 후 id sequence 를 max(id) 로 setval
-- src/dst 컬럼이 다를 경우 교집합만 migrate (스키마 drift 대비)
-- knowledge_chunks 의 embedding(JSON) 필드는 codec 등록으로 round-trip
-"""
+"""Render Postgres → Supabase 일회용 데이터 마이그레이션 스크립트."""
 from __future__ import annotations
 
 import asyncio
@@ -29,7 +8,6 @@ import sys
 
 import asyncpg
 
-# FK 부모 → 자식 순서.
 TABLES: list[str] = [
     "users",
     "knowledge_chunks",
@@ -43,12 +21,10 @@ TABLES: list[str] = [
 
 
 def _normalize(url: str) -> str:
-    """SQLAlchemy 의 'postgresql+asyncpg://' 를 asyncpg 가 받는 'postgresql://' 로."""
     return url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
 def _hide(url: str) -> str:
-    """로그 출력용 — 비밀번호 마스킹."""
     try:
         scheme, rest = url.split("://", 1)
         userinfo, hostpart = rest.rsplit("@", 1)
@@ -61,7 +37,6 @@ def _hide(url: str) -> str:
 
 
 async def _register_json_codec(conn: asyncpg.Connection) -> None:
-    """embedding 같은 JSON 컬럼이 dict/list 로 round-trip 되도록 codec 등록."""
     for typ in ("json", "jsonb"):
         try:
             await conn.set_type_codec(
@@ -71,7 +46,6 @@ async def _register_json_codec(conn: asyncpg.Connection) -> None:
                 schema="pg_catalog",
             )
         except asyncpg.exceptions.UndefinedObjectError:
-            # 타입이 없는 경우 (예: 일부 변형) — 그냥 스킵
             pass
 
 
@@ -99,7 +73,6 @@ async def _max_id(conn: asyncpg.Connection, table: str) -> int | None:
 
 async def _setval(conn: asyncpg.Connection, table: str, max_id: int) -> None:
     seq = f"{table}_id_seq"
-    # is_called=true → 다음 nextval() 호출 시 max_id + 1 반환.
     await conn.execute("SELECT setval($1, $2, true)", seq, max_id)
 
 
@@ -108,7 +81,6 @@ async def migrate_table(
     dst: asyncpg.Connection,
     table: str,
 ) -> tuple[int, int, int]:
-    """반환: (source row 수, dest before, dest after)."""
     src_cols = await _get_columns(src, table)
     dst_cols = await _get_columns(dst, table)
     common = [c for c in src_cols if c in dst_cols]
@@ -136,7 +108,6 @@ async def migrate_table(
         for r in rows:
             await dst.execute(insert_sql, *[r[c] for c in common])
 
-    # sequence 보정 — id 컬럼이 있는 테이블에 한해.
     if "id" in dst_cols:
         mx = await _max_id(dst, table)
         if mx is not None:
@@ -163,7 +134,6 @@ async def main() -> int:
         )
         return 1
 
-    # Supabase URL 은 .env 의 DATABASE_URL.
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
     from app.config import settings
 

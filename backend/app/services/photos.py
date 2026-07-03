@@ -1,10 +1,4 @@
-"""사진 갤러리 서비스.
-
-/users/me/photos 엔드포인트들의 도메인 로직을 담는다.
-최대 6장 제한, 메인 사진 지정 시 다른 사진의 is_primary 를 원자적으로
-내리는 처리, 그리고 메인 변경 시 legacy users.photo_url 도 함께
-동기화해 매칭 카드/공개 프로필 기존 호출부를 손대지 않게 유지한다.
-"""
+"""사용자 사진 갤러리 등록/삭제/대표사진 지정 서비스."""
 
 from __future__ import annotations
 
@@ -15,8 +9,6 @@ from app.models.photo import UserPhoto
 from app.models.user import User
 from app.services.storage import delete_image
 
-
-# Hard-cap so a user can't fill our Cloudinary quota with one account.
 MAX_PHOTOS_PER_USER = 6
 
 
@@ -39,16 +31,6 @@ async def add_photo(
     db: AsyncSession,
     is_face_verified: bool = True,
 ) -> UserPhoto:
-    """Append a new photo. The first photo becomes primary automatically.
-
-    `is_face_verified` defaults to True because under our strict (option B)
-    policy, photo_moderation rejects non-face uploads BEFORE this function
-    is called — anything that reaches here has passed strict face check.
-    Legacy callers can pass False if needed.
-
-    Caller is responsible for enforcing MAX_PHOTOS_PER_USER (router does
-    so before invoking the upload to avoid a wasted Cloudinary call).
-    """
     existing = await list_photos(user, db)
     is_primary = len(existing) == 0
     next_position = max((p.position for p in existing), default=-1) + 1
@@ -64,8 +46,6 @@ async def add_photo(
     db.add(photo)
 
     if is_primary:
-        # Mirror to users.photo_url so legacy match-card paths keep working
-        # without joining the new gallery table.
         user.photo_url = url
 
     await db.commit()
@@ -76,10 +56,6 @@ async def add_photo(
 async def delete_photo(
     user: User, photo_id: int, db: AsyncSession
 ) -> bool:
-    """Remove a photo from the gallery. If it was primary, promote the
-    next remaining photo (lowest position) to primary so the user always
-    has a main photo when the gallery is non-empty.
-    """
     photo = await db.get(UserPhoto, photo_id)
     if photo is None or photo.user_id != user.id:
         return False
@@ -106,9 +82,6 @@ async def delete_photo(
 
     await db.commit()
 
-    # Best-effort Cloudinary delete after the DB transaction commits — if
-    # the request crashes after this point we'd rather have an orphan
-    # asset than a stuck DB row.
     delete_image(public_id)
     return True
 
@@ -116,12 +89,10 @@ async def delete_photo(
 async def set_primary(
     user: User, photo_id: int, db: AsyncSession
 ) -> UserPhoto | None:
-    """Promote `photo_id` to primary. Demotes any other primary atomically."""
     photo = await db.get(UserPhoto, photo_id)
     if photo is None or photo.user_id != user.id:
         return None
 
-    # Demote everyone else, promote this one.
     await db.execute(
         update(UserPhoto)
         .where(UserPhoto.user_id == user.id)

@@ -1,3 +1,5 @@
+"""일별 AI 생성 텍스트 캐시 모델(DailyAiText) — 오늘의 운세/행동 가이드."""
+
 from datetime import datetime, timezone
 
 from sqlalchemy import (Column, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint)

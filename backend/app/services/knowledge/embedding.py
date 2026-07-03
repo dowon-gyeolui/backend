@@ -1,15 +1,4 @@
-"""텍스트 임베딩 서비스 — OpenAI text-embedding-3-small (1536 차원).
-
-진입점:
-  embed_text(text)              — 단일 벡터(retrieval 쿼리에서 사용)
-  embed_texts(texts)            — 배치 벡터(ingestion 에서 사용)
-  build_chunk_embedding_input() — 청크 임베딩 입력 표준 포매터
-                                  (원문 + 한국어 + 메타데이터)
-
-ingestion 과 retrieval 은 반드시 동일한 포매터(또는 정규화)를 거쳐야
-쿼리 벡터와 청크 벡터가 같은 의미 공간에 살게 된다. OPENAI_API_KEY
-환경변수가 필요하다.
-"""
+"""텍스트 임베딩 서비스 — OpenAI text-embedding-3-small (1536 차원)."""
 
 from __future__ import annotations
 
@@ -46,7 +35,6 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
     resp = _client().embeddings.create(model=EMBEDDING_MODEL, input=texts)
-    # API preserves input order.
     return [item.embedding for item in resp.data]
 
 
@@ -59,11 +47,6 @@ def build_chunk_embedding_input(
     topic: Optional[str] = None,
     tags: Optional[list[str]] = None,
 ) -> str:
-    """Concatenate original + translation + metadata into one embedding input.
-
-    Including both languages improves cross-lingual retrieval.
-    The trailing metadata line gives the embedding model source/topic signal.
-    """
     parts: list[str] = []
     if content_original and content_original.strip():
         parts.append(content_original.strip())

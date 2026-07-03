@@ -1,3 +1,4 @@
+"""사주/자미두수 요약·상세·오늘의 운세·행동 가이드 엔드포인트."""
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 

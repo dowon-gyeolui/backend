@@ -1,3 +1,5 @@
+"""사주 궁합 점수/리포트 및 매칭 후보 스키마."""
+
 from typing import Optional
 
 from pydantic import BaseModel
@@ -6,8 +8,7 @@ from pydantic import BaseModel
 class CompatibilityScore(BaseModel):
     user_a_id: int
     user_b_id: int
-    score: int  # 0~100
-    # Short Korean summary built from pillar comparison + element balance.
+    score: int
     summary: Optional[str] = None
 
 
@@ -16,7 +17,7 @@ class CompatibilityReport(BaseModel):
     user_b_id: int
     nickname_a: Optional[str] = None
     nickname_b: Optional[str] = None
-    score: int  # 0~100
+    score: int
 
     summary_lines: list[str]
 
@@ -25,15 +26,13 @@ class CompatibilityReport(BaseModel):
 
 class MatchCandidate(BaseModel):
     user_id: int
-    score: int  # 0~100
+    score: int
     nickname: Optional[str] = None
     age: Optional[int] = None
     gender: Optional[str] = None
     is_blinded: bool = True
 
-    # Unblinded-only extras (null when is_blinded=True)
     photo_url: Optional[str] = None
-    # 후보가 등록한 전체 사진 URL (position 순) — 팝업 캐러셀용
     photos: list[str] = []
     bio: Optional[str] = None
     birth_year: Optional[int] = None

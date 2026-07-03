@@ -1,3 +1,5 @@
+"""채팅 스레드/메시지 모델(ChatThread, Message)."""
+
 from datetime import datetime, timezone
 
 from sqlalchemy import (

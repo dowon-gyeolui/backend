@@ -1,19 +1,4 @@
-"""추천 서비스.
-
-두 가지 모드(제품 흐름과 1:1 대응):
-
-  1. 사전 추천(무료):
-       GET /recommendations/me
-       사용자 주도 오행에서 컬러/장소/스타일을 결정론적으로 매핑.
-       LLM/RAG 없이 항상 동작.
-
-  2. 사후 추천(유료):
-       GET /recommendations/pair/{target_user_id}
-       두 사용자의 궁합/오행 관계로 retrieval 쿼리를 구성해
-       원전 구절을 가져오고, LLM 이 강점/유의점/대화 주제를 인용
-       기반으로 작성. retrieval/LLM 실패 시에도 유효한 응답을
-       돌려주도록 안전 fallback.
-"""
+"""사전(무료) 오행 기반 추천과 사후(유료) 궁합 RAG+LLM 추천 서비스."""
 
 from __future__ import annotations
 
@@ -30,7 +15,6 @@ from app.services.saju import (
     calculate as calculate_saju,
 )
 
-# Deterministic per-element mappings (pre-match). Conservative and on-brand.
 _ELEMENT_RECOMMENDATIONS: dict[str, dict] = {
     "wood": {
         "colors": ["초록", "연두", "갈색"],
@@ -61,7 +45,6 @@ _ELEMENT_RECOMMENDATIONS: dict[str, dict] = {
 
 
 def _dominant_element_key(element_profile) -> Optional[str]:
-    """English element key with the highest count, or None when all zero."""
     named = [
         ("wood", element_profile.wood), ("fire", element_profile.fire),
         ("earth", element_profile.earth), ("metal", element_profile.metal),
@@ -72,7 +55,6 @@ def _dominant_element_key(element_profile) -> Optional[str]:
 
 
 def recommend_pre_match(user: User) -> RecommendationCard:
-    """Pre-match recommendation for a single user. Free-tier safe."""
     if user.birth_date is None:
         return RecommendationCard(
             user_id=user.id,
@@ -106,15 +88,11 @@ def recommend_pre_match(user: User) -> RecommendationCard:
     )
 
 
-# --- Post-match pair recommendations (paid tier) ---------------------
-
 async def recommend_pair(
     user_a: User,
     user_b: User,
     db: AsyncSession,
 ) -> PairRecommendation:
-    """Post-match pair recommendation — RAG + LLM grounded in classical texts."""
-    # Local imports to avoid module-load cycles.
     from app.schemas.knowledge import KnowledgeQuery
     from app.services.knowledge.retrieval import retrieve
     from app.services.llm.interpret import (
@@ -123,7 +101,6 @@ async def recommend_pair(
     )
 
     if user_a.birth_date is None or user_b.birth_date is None:
-        # Caller should guard this, but fail gracefully just in case.
         return PairRecommendation(
             user_a_id=user_a.id,
             user_b_id=user_b.id,
@@ -139,7 +116,6 @@ async def recommend_pair(
     day_a = saju_a.pillars[2]
     day_b = saju_b.pillars[2]
 
-    # Retrieval queries — one element-pair, one day-pair.
     queries: list[str] = []
     if dom_a and dom_b:
         queries.append(

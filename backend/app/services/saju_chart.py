@@ -1,22 +1,14 @@
-"""사주 명식(命式) 룩업표 — 십성/지장간/12운성/12신살.
-
-순수 파이썬 dict + 함수만으로 구성되어 외부 의존성이 없다.
-services/saju.calculate() 에서 호출해 각 기둥을 전통 명식표에 표시되는
-행(천간/십성/지지/십성/지장간/12운성/12신살)으로 풍부화한다.
-"""
+"""사주 명식(命式) 룩업표 — 십성/지장간/12운성/12신살."""
 
 from __future__ import annotations
 
 from typing import Literal
 
-# --- 천간 (Heavenly Stems) ---------------------------------------------
-
-Stem = str  # one of "갑"·"을"·...·"계"
-Branch = str  # one of "자"·"축"·...·"해"
+Stem = str
+Branch = str
 Element = Literal["wood", "fire", "earth", "metal", "water"]
 Polarity = Literal["+", "-"]
 
-# 천간 → 한자, 오행, 음양
 STEM_INFO: dict[Stem, dict[str, str]] = {
     "갑": {"hanja": "甲", "element": "wood",  "polarity": "+"},
     "을": {"hanja": "乙", "element": "wood",  "polarity": "-"},
@@ -30,7 +22,6 @@ STEM_INFO: dict[Stem, dict[str, str]] = {
     "계": {"hanja": "癸", "element": "water", "polarity": "-"},
 }
 
-# 지지 → 한자, 동물, 오행, 음양 (체용 표기 — 사주 명리학 통상치)
 BRANCH_INFO: dict[Branch, dict[str, str]] = {
     "자": {"hanja": "子", "animal": "쥐",     "element": "water", "polarity": "+"},
     "축": {"hanja": "丑", "animal": "소",     "element": "earth", "polarity": "-"},
@@ -46,7 +37,6 @@ BRANCH_INFO: dict[Branch, dict[str, str]] = {
     "해": {"hanja": "亥", "animal": "돼지",   "element": "water", "polarity": "-"},
 }
 
-# 일주 한자 색상 (天干의 오행 색)
 ELEMENT_COLOR_KO: dict[Element, str] = {
     "wood":  "푸른",
     "fire":  "붉은",
@@ -56,15 +46,11 @@ ELEMENT_COLOR_KO: dict[Element, str] = {
 }
 
 
-# --- 십성 (Ten Gods) ---------------------------------------------------
-
-# 오행 상생 (a → b 면 a 가 b 를 生)
 PRODUCES: dict[Element, Element] = {
     "wood": "fire", "fire": "earth", "earth": "metal",
     "metal": "water", "water": "wood",
 }
 
-# 오행 상극 (a → b 면 a 가 b 를 剋)
 CONTROLS: dict[Element, Element] = {
     "wood": "earth", "earth": "water", "water": "fire",
     "fire": "metal", "metal": "wood",
@@ -72,7 +58,6 @@ CONTROLS: dict[Element, Element] = {
 
 
 def ten_god(day_stem: Stem, target_stem: Stem) -> str:
-    """일간(day_stem) 기준 target_stem 의 십성 이름 반환."""
     day = STEM_INFO[day_stem]
     tgt = STEM_INFO[target_stem]
     same_polarity = day["polarity"] == tgt["polarity"]
@@ -92,18 +77,13 @@ def ten_god(day_stem: Stem, target_stem: Stem) -> str:
 
 
 def branch_ten_god(day_stem: Stem, branch: Branch) -> str:
-    """지지의 본기(주된 element/polarity) 를 기준으로 십성을 계산."""
     info = BRANCH_INFO[branch]
-    # 임시로 같은 element + polarity 의 천간을 찾아 ten_god() 재사용
     for stem, data in STEM_INFO.items():
         if data["element"] == info["element"] and data["polarity"] == info["polarity"]:
             return ten_god(day_stem, stem)
     return "—"
 
 
-# --- 지장간 (Hidden Stems) --------------------------------------------
-
-# 정기를 마지막에 두는 통상 표기
 HIDDEN_STEMS: dict[Branch, list[Stem]] = {
     "자": ["임", "계"],
     "축": ["계", "신", "기"],
@@ -120,10 +100,6 @@ HIDDEN_STEMS: dict[Branch, list[Stem]] = {
 }
 
 
-# --- 12운성 (12 Stages of Life) ----------------------------------------
-
-# 일간 -> 지지 -> 12운성 단계
-# 양간(갑·병·무·경·임)은 順行, 음간(을·정·기·신·계)은 逆行.
 TWELVE_STAGES: dict[Stem, dict[Branch, str]] = {
     "갑": {"해": "장생", "자": "목욕", "축": "관대", "인": "건록", "묘": "제왕",
             "진": "쇠",   "사": "병",   "오": "사",   "미": "묘",   "신": "절",
@@ -162,23 +138,13 @@ def twelve_stage(day_stem: Stem, branch: Branch) -> str:
     return TWELVE_STAGES.get(day_stem, {}).get(branch, "—")
 
 
-# --- 12신살 (12 Spirits) ----------------------------------------------
-
-# 년지가 속한 삼합 그룹별 12신살 매핑.
-# 각 그룹의 키는 그 그룹에 속하는 지지 3개 (예: 인오술生 → "fire" 그룹).
 TRIPLET_OF_BRANCH: dict[Branch, str] = {
-    # 寅午戌 = 火局
     "인": "fire", "오": "fire", "술": "fire",
-    # 申子辰 = 水局
     "신": "water", "자": "water", "진": "water",
-    # 巳酉丑 = 金局
     "사": "metal", "유": "metal", "축": "metal",
-    # 亥卯未 = 木局
     "해": "wood", "묘": "wood", "미": "wood",
 }
 
-# 그룹 → 지지 → 12신살 이름
-# 출처: 표준 명리학 12신살 표 (年支 기준)
 TWELVE_SPIRITS: dict[str, dict[Branch, str]] = {
     "fire": {
         "해": "겁살", "자": "재살", "축": "천살", "인": "지살",
@@ -204,7 +170,6 @@ TWELVE_SPIRITS: dict[str, dict[Branch, str]] = {
 
 
 def twelve_spirit(year_branch: Branch, target_branch: Branch) -> str:
-    """년지 기준의 12신살 이름 반환."""
     triplet = TRIPLET_OF_BRANCH.get(year_branch)
     if triplet is None:
         return "—"

@@ -1,3 +1,4 @@
+"""오늘의 인연 카드 조회/언락 및 열람 목록 엔드포인트."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 

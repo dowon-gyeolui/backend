@@ -1,3 +1,4 @@
+"""원전 지식 청크 적재/검색 엔드포인트."""
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

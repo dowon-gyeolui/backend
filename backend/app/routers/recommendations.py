@@ -1,3 +1,4 @@
+"""사전/사후 추천(컬러·장소·대화 팁) 엔드포인트."""
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 

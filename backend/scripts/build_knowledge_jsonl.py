@@ -27,7 +27,6 @@ import argparse
 import sys
 from pathlib import Path
 
-# Allow `python scripts/build_knowledge_jsonl.py` to import from `app.*`
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
