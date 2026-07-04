@@ -17,6 +17,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     kakao_id = Column(String, unique=True, nullable=True, index=True)
 
+    username = Column(String(20), unique=True, nullable=True, index=True)
+    password_hash = Column(String(255), nullable=True)
+
     birth_date = Column(Date, nullable=True)
     birth_time = Column(String(5), nullable=True)      
     calendar_type = Column(String(10), nullable=True)  

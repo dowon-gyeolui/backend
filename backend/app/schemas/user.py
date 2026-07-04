@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 _MBTI_RE = re.compile(r"^[EI][NS][TF][JP]$", re.IGNORECASE)
+_USERNAME_RE = re.compile(r"^[a-zA-Z0-9_]{4,20}$")
 
 
 def _validate_time(v: Optional[str]) -> Optional[str]:
@@ -22,6 +23,22 @@ def _validate_mbti(v: Optional[str]) -> Optional[str]:
     if not _MBTI_RE.match(v):
         raise ValueError("mbti must be a 4-letter MBTI code (e.g. ENFP)")
     return v.upper()
+
+
+class CredentialsCreate(BaseModel):
+    username: str
+    password: str = Field(min_length=8, max_length=64)
+
+    @field_validator("username")
+    @classmethod
+    def check_username(cls, v: str) -> str:
+        if not _USERNAME_RE.match(v):
+            raise ValueError("아이디는 영문/숫자/밑줄 4~20자로 입력해주세요.")
+        return v
+
+
+class CredentialsResponse(BaseModel):
+    username: str
 
 
 class BirthDataCreate(BaseModel):
@@ -90,6 +107,7 @@ class UserProfileResponse(BaseModel):
 
     id: int
     kakao_id: Optional[str] = None
+    username: Optional[str] = None
     birth_date: Optional[date] = None
     birth_time: Optional[str] = None
     calendar_type: Optional[str] = None
