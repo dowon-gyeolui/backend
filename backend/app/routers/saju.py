@@ -15,9 +15,12 @@ from app.schemas.saju import (
 )
 from app.services import saju as saju_service
 from app.services.action_guide import build_action_guide, get_action_guide_ai
+from app.services.cache import cache_get, cache_set
 from app.services.fortune import compute_today_fortune, get_today_fortune_ai
 
 router = APIRouter()
+
+_LLM_CACHE_TTL_S = 7 * 24 * 3600
 
 
 def _require_birth_date(user: User) -> None:
@@ -28,6 +31,13 @@ def _require_birth_date(user: User) -> None:
         )
 
 
+def _birth_fingerprint(user: User) -> str:
+    return (
+        f"{user.birth_date}:{user.birth_time}:{user.calendar_type}"
+        f":{user.is_leap_month}:{user.gender}"
+    )
+
+
 @router.get("/me", response_model=SajuResponse)
 async def get_my_saju(
     current_user: User = Depends(get_current_user),
@@ -35,8 +45,17 @@ async def get_my_saju(
 ):
     """Short saju summary used on the main /saju screen."""
     _require_birth_date(current_user)
+
+    key = f"llm:saju:{current_user.id}:{_birth_fingerprint(current_user)}"
+    cached = await cache_get(key)
+    if cached:
+        return SajuResponse.model_validate_json(cached)
+
     saju = saju_service.calculate(current_user)
-    return await saju_service.enrich_with_interpretation(saju, db)
+    result = await saju_service.enrich_with_interpretation(saju, db)
+    if result.interpretation_status == "ready":
+        await cache_set(key, result.model_dump_json(), _LLM_CACHE_TTL_S)
+    return result
 
 
 @router.get("/me/detailed", response_model=DetailedSajuResponse)
@@ -45,8 +64,23 @@ async def get_my_saju_detailed(
     db: AsyncSession = Depends(get_db),
 ):
     _require_birth_date(current_user)
+
+    key = f"llm:saju-detailed:{current_user.id}:{_birth_fingerprint(current_user)}"
+    cached = await cache_get(key)
+    if cached:
+        return DetailedSajuResponse.model_validate_json(cached)
+
     saju = saju_service.calculate(current_user)
-    return await saju_service.enrich_with_detailed_interpretation(saju, db)
+    result = await saju_service.enrich_with_detailed_interpretation(saju, db)
+    if (
+        result.interpretation_status == "ready"
+        and result.personality
+        and result.love
+        and result.wealth
+        and result.advice
+    ):
+        await cache_set(key, result.model_dump_json(), _LLM_CACHE_TTL_S)
+    return result
 
 
 @router.get("/me/today-fortune", response_model=TodayFortuneResponse)
@@ -92,7 +126,16 @@ async def get_my_jamidusu(
     current_user: User = Depends(get_current_user),
 ):
     _require_birth_date(current_user)
-    return saju_service.build_jamidusu_for(current_user)
+
+    key = f"llm:jamidusu:{current_user.id}:{_birth_fingerprint(current_user)}"
+    cached = await cache_get(key)
+    if cached:
+        return JamidusuResponse.model_validate_json(cached)
+
+    result = saju_service.build_jamidusu_for(current_user)
+    if result.interpretation_status == "ready":
+        await cache_set(key, result.model_dump_json(), _LLM_CACHE_TTL_S)
+    return result
 
 
 @router.get("/me/jamidusu-deep", response_model=JamidusuDeepResponse)
@@ -101,4 +144,13 @@ async def get_my_jamidusu_deep(
     db: AsyncSession = Depends(get_db),
 ):
     _require_birth_date(current_user)
-    return await saju_service.build_jamidusu_deep_for(current_user, db)
+
+    key = f"llm:jamidusu-deep:{current_user.id}:{_birth_fingerprint(current_user)}"
+    cached = await cache_get(key)
+    if cached:
+        return JamidusuDeepResponse.model_validate_json(cached)
+
+    result = await saju_service.build_jamidusu_deep_for(current_user, db)
+    if result.interpretation_status == "ready":
+        await cache_set(key, result.model_dump_json(), _LLM_CACHE_TTL_S)
+    return result

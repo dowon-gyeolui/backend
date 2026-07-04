@@ -279,7 +279,9 @@ _DETAILED_SYSTEM_PROMPT = (
     "\n"
     "건강·질병·수명에 대한 언급은 절대 포함하지 마세요.\n"
     "\n"
-    "원전 구절이 사주와 명확한 연결점이 없는 카테고리는 빈 문자열을 반환해도 됩니다."
+    "personality·love·wealth·advice 네 키는 모두 반드시 2~3 문장으로 채우십시오. "
+    "빈 문자열·생략 금지. 원전 구절이 특정 카테고리와 직접 연결되지 않으면, "
+    "[사주 결과]에 적힌 일주·오행 분포를 근거로 그 카테고리를 풀어 쓰십시오."
 )
 
 def generate_detailed_interpretation(
@@ -290,25 +292,31 @@ def generate_detailed_interpretation(
 ) -> Optional[dict[str, str]]:
     if not passages:
         return None
-    try:
-        resp = _client().responses.create(
-            model=model,
-            instructions=_DETAILED_SYSTEM_PROMPT,
-            input=_build_user_message(saju, passages),
-            max_output_tokens=1200,
-        )
-        text = _extract_output_text(resp)
-        parsed = _parse_pair_json(text)
+    result: Optional[dict[str, str]] = None
+    # 파싱 실패 또는 빈 카테고리가 있으면 1회 재시도.
+    for _ in range(2):
+        try:
+            resp = _client().responses.create(
+                model=model,
+                instructions=_DETAILED_SYSTEM_PROMPT,
+                input=_build_user_message(saju, passages),
+                max_output_tokens=2000,
+            )
+            text = _extract_output_text(resp)
+            parsed = _parse_pair_json(text)
+        except Exception:
+            continue
         if parsed is None:
-            return None
-        return {
+            continue
+        result = {
             "personality": str(parsed.get("personality") or ""),
             "love": str(parsed.get("love") or ""),
             "wealth": str(parsed.get("wealth") or ""),
             "advice": str(parsed.get("advice") or ""),
         }
-    except Exception:
-        return None
+        if all(v.strip() for v in result.values()):
+            break
+    return result
 
 
 _JAMIDUSU_SYSTEM_PROMPT = (

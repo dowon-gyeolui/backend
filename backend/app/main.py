@@ -74,6 +74,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         purge_task.cancel()
+        from app.services.cache import close_cache
+        await close_cache()
         from app.database import engine
         await engine.dispose()
 

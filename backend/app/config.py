@@ -29,6 +29,8 @@ class Settings(BaseSettings):
 
     toss_secret_key: str = ""
 
+    redis_url: str = ""
+
     frontend_urls: str = "http://localhost:3000"
 
     debug: bool = True

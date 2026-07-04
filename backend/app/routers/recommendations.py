@@ -8,8 +8,18 @@ from app.models.user import User
 from app.schemas.recommendation import PairRecommendation, RecommendationCard
 from app.services import matching as matching_service
 from app.services import recommendations as rec_service
+from app.services.cache import cache_get, cache_set
 
 router = APIRouter()
+
+_PAIR_CACHE_TTL_S = 7 * 24 * 3600
+
+
+def _pair_fingerprint(a: User, b: User) -> str:
+    return (
+        f"{a.birth_date}:{a.birth_time}:{a.gender}"
+        f"|{b.birth_date}:{b.birth_time}:{b.gender}"
+    )
 
 
 @router.get(
@@ -71,4 +81,15 @@ async def get_pair_recommendation(
             detail="상대의 생년월일이 입력되지 않아 추천을 생성할 수 없습니다.",
         )
 
-    return await rec_service.recommend_pair(current_user, target, db)
+    key = (
+        f"llm:pair:{current_user.id}:{target.id}"
+        f":{_pair_fingerprint(current_user, target)}"
+    )
+    cached = await cache_get(key)
+    if cached:
+        return PairRecommendation.model_validate_json(cached)
+
+    result = await rec_service.recommend_pair(current_user, target, db)
+    if result.summary:
+        await cache_set(key, result.model_dump_json(), _PAIR_CACHE_TTL_S)
+    return result
