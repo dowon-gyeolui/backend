@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -151,7 +152,8 @@ async def recommend_pair(
 
     if passages_by_citation:
         ordered = [passages_by_citation[c] for c in citations]
-        llm_out = generate_pair_recommendation(
+        llm_out = await asyncio.to_thread(
+            generate_pair_recommendation,
             score=cs.score,
             user_a_info={
                 "nickname": user_a.nickname,

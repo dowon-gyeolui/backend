@@ -1,5 +1,7 @@
 """사주(사주팔자) 계산 및 원전 RAG 기반 해석·자미두수 풀이 서비스."""
 
+import asyncio
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
@@ -200,7 +202,9 @@ async def enrich_with_interpretation(
     saju.interpretation_status = "ready"
 
     ordered_passages = [passages_by_citation[c] for c in unique_citations]
-    saju.interpretation = generate_saju_interpretation(saju, ordered_passages)
+    saju.interpretation = await asyncio.to_thread(
+        generate_saju_interpretation, saju, ordered_passages
+    )
 
     return saju
 
@@ -254,7 +258,9 @@ async def enrich_with_detailed_interpretation(
     base.interpretation_status = "ready"
 
     ordered_passages = [passages_by_citation[c] for c in unique_citations]
-    sections = generate_detailed_interpretation(saju, ordered_passages)
+    sections = await asyncio.to_thread(
+        generate_detailed_interpretation, saju, ordered_passages
+    )
     if sections:
         base.personality = sections.get("personality", "")
         base.love = sections.get("love", "")
@@ -264,14 +270,14 @@ async def enrich_with_detailed_interpretation(
     return base
 
 
-def build_jamidusu_for(user: User) -> "JamidusuResponse":
+async def build_jamidusu_for(user: User) -> "JamidusuResponse":
     from app.schemas.saju import JamidusuPalace, JamidusuResponse
     from app.services.llm.interpret import generate_jamidusu_interpretation
 
     saju = calculate(user)
     result = JamidusuResponse(user_id=user.id)
 
-    sections = generate_jamidusu_interpretation(saju)
+    sections = await asyncio.to_thread(generate_jamidusu_interpretation, saju)
     if not sections:
         return result
 
@@ -426,7 +432,9 @@ async def build_jamidusu_deep_for(
         sources=unique_citations,
     )
 
-    llm_result = generate_jamidusu_deep(saju, chart_dict, ordered_passages)
+    llm_result = await asyncio.to_thread(
+        generate_jamidusu_deep, saju, chart_dict, ordered_passages
+    )
     if llm_result is None:
         response.interpretation_status = "partial"
         return response

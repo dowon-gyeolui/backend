@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -38,7 +39,9 @@ async def get_or_create_daily_text(
         return row.text
 
     nickname = (user.nickname or "").strip() or "고객"
-    text = generate_daily_text(kind=kind, nickname=nickname, signal_text=signal_text)
+    text = await asyncio.to_thread(
+        generate_daily_text, kind=kind, nickname=nickname, signal_text=signal_text
+    )
     if not text:
         return None
 

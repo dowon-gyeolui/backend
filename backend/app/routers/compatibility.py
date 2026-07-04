@@ -1,4 +1,6 @@
 """두 사용자 간 궁합 리포트 조회 엔드포인트."""
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,4 +48,6 @@ async def get_compatibility_report(
         )
     _require_birth_data(target, is_self=False)
 
-    return compatibility_service.build_report(current_user, target)
+    return await asyncio.to_thread(
+        compatibility_service.build_report, current_user, target
+    )

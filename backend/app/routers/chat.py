@@ -1,4 +1,5 @@
 """채팅 스레드/메시지 CRUD, 미디어 전송, 모더레이션, 실시간 폴링 엔드포인트."""
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
@@ -96,7 +97,7 @@ async def _enforce_chat_moderation(
 ) -> None:
     if not (content or "").strip():
         return
-    result = moderate_chat_message(content)
+    result = await asyncio.to_thread(moderate_chat_message, content)
     if result.ok:
         return
 

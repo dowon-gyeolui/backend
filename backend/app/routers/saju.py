@@ -132,7 +132,7 @@ async def get_my_jamidusu(
     if cached:
         return JamidusuResponse.model_validate_json(cached)
 
-    result = saju_service.build_jamidusu_for(current_user)
+    result = await saju_service.build_jamidusu_for(current_user)
     if result.interpretation_status == "ready":
         await cache_set(key, result.model_dump_json(), _LLM_CACHE_TTL_S)
     return result

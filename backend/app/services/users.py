@@ -69,7 +69,21 @@ async def build_public_profile(
     ).scalar_one_or_none()
     is_face_verified = bool(primary_photo and primary_photo.is_face_verified)
 
-    photos = [] if is_blinded else await compatibility_service._candidate_photos(target, db)
+    if is_blinded:
+        photos = []
+        photos_total = 0
+    else:
+        photos = await compatibility_service._candidate_photos(target, db)
+        photos_total = len(photos)
+        if viewer.id != target.id:
+            viewer_photo_count = (
+                await db.execute(
+                    select(func.count(UserPhoto.id)).where(
+                        UserPhoto.user_id == viewer.id
+                    )
+                )
+            ).scalar_one() or 0
+            photos = photos[: min(viewer_photo_count, photos_total)]
 
     target_answers = (
         await db.execute(
@@ -124,6 +138,7 @@ async def build_public_profile(
         nickname=target.nickname,
         photo_url=None if is_blinded else target.photo_url,
         photos=photos,
+        photos_total=photos_total,
         is_blinded=is_blinded,
         interview_answers=interview_answers,
         interview_total=interview_total,

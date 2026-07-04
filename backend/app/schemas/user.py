@@ -159,6 +159,7 @@ class PublicProfileResponse(BaseModel):
     nickname: Optional[str] = None
     photo_url: Optional[str] = None
     photos: list[str] = []
+    photos_total: int = 0
     is_blinded: bool
 
     interview_answers: list[InterviewAnswerOut] = []
