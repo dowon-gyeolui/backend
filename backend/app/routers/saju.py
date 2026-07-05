@@ -1,4 +1,6 @@
 """사주/자미두수 요약·상세·오늘의 운세·행동 가이드 엔드포인트."""
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +40,53 @@ def _birth_fingerprint(user: User) -> str:
     )
 
 
+# LLM 생성이 브라우저 fetch 타임아웃(약 60초)을 넘길 수 있어, 무거운 해석은
+# 백그라운드에서 생성해 캐시에 넣고 엔드포인트는 즉시 pending 을 반환한다.
+# 프론트가 재조회(polling)하다가 캐시가 채워지면 ready 결과를 받는다.
+_inflight: set[str] = set()
+
+
+async def _generate_detailed_in_background(key: str, user_id: int) -> None:
+    from app.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as db:
+            user = await db.get(User, user_id)
+            if user is None or user.birth_date is None:
+                return
+            saju = saju_service.calculate(user)
+            result = await saju_service.enrich_with_detailed_interpretation(saju, db)
+            if (
+                result.interpretation_status == "ready"
+                and result.personality
+                and result.love
+                and result.wealth
+                and result.advice
+            ):
+                await cache_set(key, result.model_dump_json(), _LLM_CACHE_TTL_S)
+    except Exception:
+        pass
+    finally:
+        _inflight.discard(key)
+
+
+async def _generate_jamidusu_deep_in_background(key: str, user_id: int) -> None:
+    from app.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as db:
+            user = await db.get(User, user_id)
+            if user is None or user.birth_date is None:
+                return
+            result = await saju_service.build_jamidusu_deep_for(user, db)
+            if result.interpretation_status == "ready":
+                await cache_set(key, result.model_dump_json(), _LLM_CACHE_TTL_S)
+    except Exception:
+        pass
+    finally:
+        _inflight.discard(key)
+
+
 @router.get("/me", response_model=SajuResponse)
 async def get_my_saju(
     current_user: User = Depends(get_current_user),
@@ -61,7 +110,6 @@ async def get_my_saju(
 @router.get("/me/detailed", response_model=DetailedSajuResponse)
 async def get_my_saju_detailed(
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     _require_birth_date(current_user)
 
@@ -70,17 +118,14 @@ async def get_my_saju_detailed(
     if cached:
         return DetailedSajuResponse.model_validate_json(cached)
 
+    if key not in _inflight:
+        _inflight.add(key)
+        asyncio.create_task(
+            _generate_detailed_in_background(key, current_user.id)
+        )
+
     saju = saju_service.calculate(current_user)
-    result = await saju_service.enrich_with_detailed_interpretation(saju, db)
-    if (
-        result.interpretation_status == "ready"
-        and result.personality
-        and result.love
-        and result.wealth
-        and result.advice
-    ):
-        await cache_set(key, result.model_dump_json(), _LLM_CACHE_TTL_S)
-    return result
+    return DetailedSajuResponse(**saju.model_dump())
 
 
 @router.get("/me/today-fortune", response_model=TodayFortuneResponse)
@@ -141,7 +186,6 @@ async def get_my_jamidusu(
 @router.get("/me/jamidusu-deep", response_model=JamidusuDeepResponse)
 async def get_my_jamidusu_deep(
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     _require_birth_date(current_user)
 
@@ -150,7 +194,12 @@ async def get_my_jamidusu_deep(
     if cached:
         return JamidusuDeepResponse.model_validate_json(cached)
 
-    result = await saju_service.build_jamidusu_deep_for(current_user, db)
-    if result.interpretation_status == "ready":
-        await cache_set(key, result.model_dump_json(), _LLM_CACHE_TTL_S)
-    return result
+    if key not in _inflight:
+        _inflight.add(key)
+        asyncio.create_task(
+            _generate_jamidusu_deep_in_background(key, current_user.id)
+        )
+
+    return JamidusuDeepResponse(
+        user_id=current_user.id, interpretation_status="pending"
+    )
