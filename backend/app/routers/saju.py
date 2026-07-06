@@ -64,8 +64,18 @@ async def _generate_detailed_in_background(key: str, user_id: int) -> None:
                 and result.advice
             ):
                 await cache_set(key, result.model_dump_json(), _LLM_CACHE_TTL_S)
-    except Exception:
-        pass
+                print(f"[saju-bg] detailed 생성 완료: user={user_id}", flush=True)
+            else:
+                print(
+                    f"[saju-bg] detailed 미완성: user={user_id}"
+                    f" status={result.interpretation_status}"
+                    f" sources={len(result.interpretation_sources)}"
+                    f" sections={bool(result.personality)},{bool(result.love)},"
+                    f"{bool(result.wealth)},{bool(result.advice)}",
+                    flush=True,
+                )
+    except Exception as exc:
+        print(f"[saju-bg] detailed 생성 실패: user={user_id} err={exc!r}", flush=True)
     finally:
         _inflight.discard(key)
 
@@ -81,8 +91,15 @@ async def _generate_jamidusu_deep_in_background(key: str, user_id: int) -> None:
             result = await saju_service.build_jamidusu_deep_for(user, db)
             if result.interpretation_status == "ready":
                 await cache_set(key, result.model_dump_json(), _LLM_CACHE_TTL_S)
-    except Exception:
-        pass
+                print(f"[saju-bg] jamidusu 생성 완료: user={user_id}", flush=True)
+            else:
+                print(
+                    f"[saju-bg] jamidusu 미완성: user={user_id}"
+                    f" status={result.interpretation_status}",
+                    flush=True,
+                )
+    except Exception as exc:
+        print(f"[saju-bg] jamidusu 생성 실패: user={user_id} err={exc!r}", flush=True)
     finally:
         _inflight.discard(key)
 

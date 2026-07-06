@@ -304,7 +304,8 @@ def generate_detailed_interpretation(
             )
             text = _extract_output_text(resp)
             parsed = _parse_pair_json(text)
-        except Exception:
+        except Exception as exc:
+            print(f"[llm] detailed 호출 실패: {exc!r}", flush=True)
             continue
         if parsed is None:
             continue
