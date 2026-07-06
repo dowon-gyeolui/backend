@@ -34,20 +34,33 @@ def _memory_set(key: str, value: str, ttl_seconds: int) -> None:
     _memory[key] = (value, time.monotonic() + ttl_seconds)
 
 
+_client_failed = False
+
+
 def _get_client():
-    global _client
-    if not settings.redis_url:
+    global _client, _client_failed
+    if _client_failed or not settings.redis_url:
         return None
     if _client is None:
-        import redis.asyncio as redis
+        try:
+            import redis.asyncio as redis
 
-        _client = redis.from_url(
-            settings.redis_url,
-            encoding="utf-8",
-            decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=2,
-        )
+            # 환경변수에 따옴표째 붙여넣는 실수를 보정한다.
+            url = settings.redis_url.strip().strip('"').strip("'")
+            _client = redis.from_url(
+                url,
+                encoding="utf-8",
+                decode_responses=True,
+                socket_connect_timeout=2,
+                socket_timeout=2,
+            )
+        except Exception as exc:
+            print(
+                f"[cache] Redis 클라이언트 생성 실패 — 메모리 캐시로 동작: {exc!r}",
+                flush=True,
+            )
+            _client_failed = True
+            return None
     return _client
 
 
