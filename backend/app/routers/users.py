@@ -1,9 +1,12 @@
 """사용자 프로필/사진/인터뷰 답변/생년월일/계정 삭제 엔드포인트."""
+from datetime import date
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.deps import get_current_user
 from app.core.security import hash_password
 from app.database import get_db
@@ -124,12 +127,28 @@ async def replace_interview_answers(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+def _ensure_adult(birth_date: date) -> None:
+    """만 19세 미만이면 가입/수정을 막는다 (생일 경과 여부 반영)."""
+    today = date.today()
+    age = (
+        today.year
+        - birth_date.year
+        - ((today.month, today.day) < (birth_date.month, birth_date.day))
+    )
+    if age < 19:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="만 19세 이상만 가입할 수 있어요.",
+        )
+
+
 @router.post("/me/birth-data", response_model=UserProfileResponse)
 async def set_birth_data(
     data: BirthDataCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_adult(data.birth_date)
     return await users_service.set_birth_data(current_user, data, db)
 
 
@@ -139,6 +158,8 @@ async def patch_birth_data(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if data.birth_date is not None:
+        _ensure_adult(data.birth_date)
     return await users_service.patch_birth_data(current_user, data, db)
 
 
@@ -338,6 +359,8 @@ async def upgrade_demo(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if not settings.debug:
+        raise HTTPException(status_code=404)
     current_user.is_paid = True
     await db.commit()
     await db.refresh(current_user)

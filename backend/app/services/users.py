@@ -3,6 +3,7 @@
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.block import UserBlock
 from app.models.card_unlock import CardUnlock
 from app.models.chat import ChatThread, Message
 from app.models.daily_ai_text import DailyAiText
@@ -211,6 +212,19 @@ async def delete_account(user: User, db: AsyncSession) -> None:
 
     await db.execute(
         delete(DailyAiText).where(DailyAiText.user_id == user.id)
+    )
+
+    await db.execute(
+        delete(InterviewAnswer).where(InterviewAnswer.user_id == user.id)
+    )
+
+    await db.execute(
+        delete(UserBlock).where(
+            or_(
+                UserBlock.blocker_id == user.id,
+                UserBlock.blocked_id == user.id,
+            )
+        )
     )
 
     await db.execute(
