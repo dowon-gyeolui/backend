@@ -221,6 +221,19 @@ def _parse_pair_json(text: str) -> Optional[dict[str, Any]]:
         return None
     return data
 
+_DETAILED_PLAIN_KOREAN_RULES = (
+    "- 반드시 한국어로만 답변하십시오. 영어 단어·문장 사용 금지.\n"
+    "- ★가장 중요★ 독자는 사주를 전혀 모르는 일반인입니다. 사주 전문용어(한자말)를 "
+    "쓰지 말고, 처음부터 쉬운 일상어로만 풀어 쓰십시오.\n"
+    "- 문장 안에서 소괄호 '(...)' 로 용어를 덧붙여 설명하지 마십시오. 괄호 자체를 쓰지 "
+    "말고, 어려운 말은 아예 꺼내지 말고 바로 쉬운 우리말로 풀어 쓰십시오.\n"
+    "- 오행(목·화·토·금·수)의 '기운' 을 직접 언급하거나 해설하지 마십시오. 대신 그 "
+    "사람의 성향·연애 태도를 일상어로 자연스럽게 묘사하십시오.\n"
+    "- 한자는 본문에 그대로 노출하지 말고 쉬운 우리말로만 풀어 쓰십시오.\n"
+    "- 한 문장은 60자를 넘기지 않도록 짧게 끊고, 일상 대화체로 쓰십시오.\n"
+)
+
+
 _DETAILED_SYSTEM_PROMPT = (
     "당신은 사용자의 사주 팔자와 원전 문헌의 관련 구절을 바탕으로 "
     "**연애·연인 관점에서** 한국어 심층 해석을 작성하는 도우미입니다.\n"
@@ -237,7 +250,7 @@ _DETAILED_SYSTEM_PROMPT = (
     "- 명령형 '~해라', 격식체 '~십시오', 반말 '~해/~이야' 모두 금지.\n"
     "\n"
     "공통 규칙:\n"
-    + _PLAIN_KOREAN_RULES +
+    + _DETAILED_PLAIN_KOREAN_RULES +
     "- '검색된 원전 구절' 내용만 근거로 사용하고, 원전에 없는 내용은 추측하지 마세요.\n"
     "- 사용자의 일주는 '[사주 결과]'에 적힌 값 그대로 지칭하세요.\n"
     "\n"
@@ -258,8 +271,7 @@ _DETAILED_SYSTEM_PROMPT = (
     "그릴 수 있는 스마트한 연애를 추구해요.'\n"
     "  - advice = '매칭 확률을 높이는 실전 팁'. 프로필 사진 팁, 선톡·대화 팁, "
     "마음가짐 조언처럼 앱 안에서 바로 실천할 행동 지침을 제안형으로 알려주세요. "
-    "오행 기운을 근거로 연결하면 좋아요. "
-    "예: '물(水)의 기운이 많아 생각이 많아질 수 있어요. 마음에 드는 상대가 있다면 "
+    "예: '생각이 많아 고민하다 타이밍을 놓치기 쉬워요. 마음에 드는 상대가 있다면 "
     "고민은 매칭만 늦출 뿐! 먼저 가벼운 인사말로 운을 띄워보세요.'\n"
     "\n"
     "예시 톤 (이 정도 발랄함을 유지):\n"
@@ -283,6 +295,20 @@ _DETAILED_SYSTEM_PROMPT = (
     "빈 문자열·생략 금지. 원전 구절이 특정 카테고리와 직접 연결되지 않으면, "
     "[사주 결과]에 적힌 일주·오행 분포를 근거로 그 카테고리를 풀어 쓰십시오."
 )
+
+# detailed 풀이 전용 안전망: LLM 이 규칙을 어겨도 문장 중간 괄호 설명이 새어나가지 않게
+# 소괄호(반각·전각)로 둘러싼 부분을 제거하고 남은 중복 공백만 가볍게 정리한다.
+_DETAILED_PARENTHETICAL_RE = re.compile(r"\s*[（(][^（()）]*[)）]")
+
+
+def _strip_parentheticals(text: str) -> str:
+    if not text:
+        return text
+    cleaned = _DETAILED_PARENTHETICAL_RE.sub("", text)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"[ \t]+([,.!?])", r"\1", cleaned)
+    return cleaned.strip()
+
 
 def generate_detailed_interpretation(
     saju: SajuResponse,
@@ -310,10 +336,10 @@ def generate_detailed_interpretation(
         if parsed is None:
             continue
         result = {
-            "personality": str(parsed.get("personality") or ""),
-            "love": str(parsed.get("love") or ""),
-            "wealth": str(parsed.get("wealth") or ""),
-            "advice": str(parsed.get("advice") or ""),
+            "personality": _strip_parentheticals(str(parsed.get("personality") or "")),
+            "love": _strip_parentheticals(str(parsed.get("love") or "")),
+            "wealth": _strip_parentheticals(str(parsed.get("wealth") or "")),
+            "advice": _strip_parentheticals(str(parsed.get("advice") or "")),
         }
         if all(v.strip() for v in result.values()):
             break
