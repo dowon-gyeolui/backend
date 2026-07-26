@@ -41,6 +41,16 @@ class CredentialsResponse(BaseModel):
     username: str
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    token: str
+    is_new: bool
+
+
 class BirthDataCreate(BaseModel):
     birth_date: date
     birth_time: Optional[str] = None
