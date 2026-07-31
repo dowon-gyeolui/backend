@@ -6,6 +6,7 @@
 # Except the example templates — those are safe to share.
 !.env.example
 !**/.env.example
+firebase-service-account.json
 
 # --- Python runtime ---
 __pycache__/
