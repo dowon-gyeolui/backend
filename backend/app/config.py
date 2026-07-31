@@ -31,6 +31,8 @@ class Settings(BaseSettings):
 
     redis_url: str = ""
 
+    sentry_dsn: str = ""
+
     frontend_urls: str = "http://localhost:3000"
 
     debug: bool = True

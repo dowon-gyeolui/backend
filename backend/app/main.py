@@ -24,6 +24,20 @@ from app.routers import (
 )
 
 
+if settings.sentry_dsn:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            integrations=[FastApiIntegration()],
+            traces_sample_rate=0.1,
+        )
+    except Exception as exc:
+        print(f"[startup] Sentry 초기화 실패 — 무시하고 계속: {exc!r}", flush=True)
+
+
 def _redact_db_url(url: str) -> str:
     try:
         scheme, rest = url.split("://", 1)
