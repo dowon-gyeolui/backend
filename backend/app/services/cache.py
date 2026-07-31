@@ -87,6 +87,38 @@ async def cache_set(key: str, value: str, ttl_seconds: int) -> None:
         pass
 
 
+def _memory_incr(key: str, ttl_seconds: int) -> int:
+    now = time.monotonic()
+    item = _memory.get(key)
+    if item is not None:
+        value, expires_at = item
+        if now <= expires_at:
+            new_value = int(value) + 1
+            _memory[key] = (str(new_value), expires_at)
+            return new_value
+    if len(_memory) >= _MEMORY_MAX_ENTRIES:
+        for k in [k for k, (_, exp) in _memory.items() if exp < now]:
+            _memory.pop(k, None)
+        if len(_memory) >= _MEMORY_MAX_ENTRIES:
+            _memory.pop(next(iter(_memory)), None)
+    _memory[key] = ("1", now + ttl_seconds)
+    return 1
+
+
+async def cache_incr(key: str, ttl_seconds: int) -> int:
+    """카운터를 1 증가시키고 새 값을 반환한다 (레이트리밋용). 최초 증가 시 TTL 부여."""
+    client = _get_client()
+    if client is not None:
+        try:
+            value = await client.incr(key)
+            if value == 1:
+                await client.expire(key, ttl_seconds)
+            return value
+        except Exception:
+            pass
+    return _memory_incr(key, ttl_seconds)
+
+
 async def close_cache() -> None:
     global _client
     if _client is not None:

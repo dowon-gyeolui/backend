@@ -19,10 +19,23 @@ from app.services import saju as saju_service
 from app.services.action_guide import build_action_guide, get_action_guide_ai
 from app.services.cache import cache_get, cache_set
 from app.services.fortune import compute_today_fortune, get_today_fortune_ai
+from app.services.rate_limit import check_daily_limit
 
 router = APIRouter()
 
 _LLM_CACHE_TTL_S = 7 * 24 * 3600
+
+# 사주/자미두수는 LLM 생성 비용이 크고 생년월일 수정 시 캐시가 빗나가므로,
+# 실제로 새로 생성(캐시 미스)할 때만 사용자당 일일 호출 횟수를 제한한다.
+_DAILY_GENERATION_LIMIT = 3
+
+
+async def _check_generation_limit(user_id: int) -> None:
+    if not await check_daily_limit(user_id, "saju_generate", _DAILY_GENERATION_LIMIT):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="오늘 사용 가능한 사주 풀이 횟수를 모두 사용했어요. 내일 다시 시도해주세요.",
+        )
 
 
 def _require_birth_date(user: User) -> None:
@@ -117,6 +130,8 @@ async def get_my_saju(
     if cached:
         return SajuResponse.model_validate_json(cached)
 
+    await _check_generation_limit(current_user.id)
+
     saju = saju_service.calculate(current_user)
     result = await saju_service.enrich_with_interpretation(saju, db)
     if result.interpretation_status == "ready":
@@ -136,6 +151,7 @@ async def get_my_saju_detailed(
         return DetailedSajuResponse.model_validate_json(cached)
 
     if key not in _inflight:
+        await _check_generation_limit(current_user.id)
         _inflight.add(key)
         asyncio.create_task(
             _generate_detailed_in_background(key, current_user.id)
@@ -194,6 +210,8 @@ async def get_my_jamidusu(
     if cached:
         return JamidusuResponse.model_validate_json(cached)
 
+    await _check_generation_limit(current_user.id)
+
     result = await saju_service.build_jamidusu_for(current_user)
     if result.interpretation_status == "ready":
         await cache_set(key, result.model_dump_json(), _LLM_CACHE_TTL_S)
@@ -212,6 +230,7 @@ async def get_my_jamidusu_deep(
         return JamidusuDeepResponse.model_validate_json(cached)
 
     if key not in _inflight:
+        await _check_generation_limit(current_user.id)
         _inflight.add(key)
         asyncio.create_task(
             _generate_jamidusu_deep_in_background(key, current_user.id)

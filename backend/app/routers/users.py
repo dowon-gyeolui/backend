@@ -27,12 +27,15 @@ from app.schemas.user import (
 from app.services import photos as photos_service
 from app.services import users as users_service
 from app.services.photo_moderation import verify_profile_photo
+from app.services.rate_limit import check_daily_limit
 from app.services.storage import (
     StorageNotConfiguredError,
     upload_image_full,
 )
 
 router = APIRouter()
+
+_BIRTH_DATA_PATCH_DAILY_LIMIT = 5
 
 
 @router.get("/me", response_model=UserProfileResponse)
@@ -158,6 +161,13 @@ async def patch_birth_data(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if not await check_daily_limit(
+        current_user.id, "birth_data_patch", _BIRTH_DATA_PATCH_DAILY_LIMIT
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="생년월일 수정 가능 횟수를 오늘 모두 사용했어요. 내일 다시 시도해주세요.",
+        )
     if data.birth_date is not None:
         _ensure_adult(data.birth_date)
     return await users_service.patch_birth_data(current_user, data, db)
