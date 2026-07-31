@@ -49,8 +49,17 @@ def _init_firebase():
     return _firebase_app
 
 
-async def send_push_to_user(user_id: int, title: str, body: str, db: AsyncSession) -> None:
-    """user_id 의 모든 기기 토큰에 푸시를 보낸다. 실패해도 예외를 삼켜 호출부에 영향 없다."""
+async def send_push_to_user(
+    user_id: int,
+    title: str,
+    body: str,
+    db: AsyncSession,
+    data: dict[str, str] | None = None,
+) -> None:
+    """user_id 의 모든 기기 토큰에 푸시를 보낸다. 실패해도 예외를 삼켜 호출부에 영향 없다.
+
+    data 는 알림을 탭했을 때 앱이 어느 화면으로 갈지 판단하는 데 쓴다(FCM 규격상 값은 문자열).
+    """
     try:
         app = _init_firebase()
         if app is None:
@@ -71,6 +80,7 @@ async def send_push_to_user(user_id: int, title: str, body: str, db: AsyncSessio
                     messaging.send,
                     messaging.Message(
                         notification=messaging.Notification(title=title, body=body),
+                        data=data or {},
                         token=token,
                     ),
                     app=app,

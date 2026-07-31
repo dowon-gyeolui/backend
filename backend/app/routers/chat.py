@@ -44,7 +44,9 @@ _SUSPENSION_DURATION = timedelta(hours=24)
 _CHAT_UNLOCK_TTL = timedelta(hours=24)
 
 
-def _notify_new_message(peer_id: int, sender_nickname: str | None) -> None:
+def _notify_new_message(
+    peer_id: int, sender_id: int, sender_nickname: str | None
+) -> None:
     """새 메시지 푸시를 fire-and-forget 으로 보낸다. 요청 응답을 늦추지 않는다."""
 
     async def _run() -> None:
@@ -55,6 +57,8 @@ def _notify_new_message(peer_id: int, sender_nickname: str | None) -> None:
                     "새 메시지",
                     f"{sender_nickname or '상대방'}님이 메시지를 보냈어요",
                     db,
+                    # 수신자 입장에서 대화 상대는 발신자 — 앱의 채팅방 경로가 상대 user_id 기준이다.
+                    {"peer_id": str(sender_id)},
                 )
         except Exception:
             pass
@@ -560,7 +564,7 @@ async def send_message_to_peer(
     thread.updated_at = msg.created_at or thread.updated_at
     await db.commit()
     await db.refresh(msg)
-    _notify_new_message(peer_id, current_user.nickname)
+    _notify_new_message(peer_id, current_user.id, current_user.nickname)
     return MessageOut.model_validate(msg)
 
 
