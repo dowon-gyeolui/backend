@@ -10,8 +10,10 @@ from app.config import settings
 from app.core.deps import get_current_user
 from app.core.security import hash_password
 from app.database import get_db
+from app.models.device_token import DeviceToken
 from app.models.interview import InterviewAnswer
 from app.models.user import User
+from app.schemas.device_token import DeviceTokenRegister
 from app.schemas.photo import UserPhotoListResponse, UserPhotoResponse
 from app.schemas.user import (
     BirthDataCreate,
@@ -63,6 +65,31 @@ async def set_credentials(
     current_user.password_hash = hash_password(data.password)
     await db.commit()
     return CredentialsResponse(username=current_user.username)
+
+
+@router.post("/me/device-token", status_code=status.HTTP_204_NO_CONTENT)
+async def register_device_token(
+    data: DeviceTokenRegister,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """FCM 기기 토큰 등록 — 같은 토큰이 이미 있으면 소유자/플랫폼을 갱신(upsert)."""
+    existing = (
+        await db.execute(select(DeviceToken).where(DeviceToken.token == data.token))
+    ).scalar_one_or_none()
+    if existing is not None:
+        existing.user_id = current_user.id
+        existing.platform = data.platform
+    else:
+        db.add(
+            DeviceToken(
+                user_id=current_user.id,
+                token=data.token,
+                platform=data.platform,
+            )
+        )
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{user_id}/public-profile", response_model=PublicProfileResponse)
