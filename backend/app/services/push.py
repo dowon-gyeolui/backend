@@ -6,6 +6,7 @@ Credential 은 운영(Render) 환경을 우선 고려해 `settings.firebase_serv
 조용히 비활성화되고(Sentry 연동과 동일한 패턴) 앱 기동에는 영향 없다.
 """
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -65,7 +66,9 @@ async def send_push_to_user(user_id: int, title: str, body: str, db: AsyncSessio
 
         for token in tokens:
             try:
-                messaging.send(
+                # messaging.send 는 동기 HTTP 호출이라 그대로 부르면 이벤트 루프가 막힌다.
+                await asyncio.to_thread(
+                    messaging.send,
                     messaging.Message(
                         notification=messaging.Notification(title=title, body=body),
                         token=token,
