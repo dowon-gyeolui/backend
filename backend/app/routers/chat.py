@@ -16,7 +16,7 @@ from sqlalchemy import and_, delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.models.block import UserBlock
 from app.models.card_unlock import CardUnlock
 from app.models.chat import ChatThread, Message
@@ -30,6 +30,7 @@ from app.schemas.chat import (
 )
 from app.services.chat_moderation import moderate_chat_message
 from app.services.matching import is_blocked
+from app.services.push import send_push_to_user
 from app.services.storage import (
     StorageNotConfiguredError,
     upload_chat_audio,
@@ -41,6 +42,24 @@ _SUSPENSION_THRESHOLD = 3
 _SUSPENSION_DURATION = timedelta(hours=24)
 
 _CHAT_UNLOCK_TTL = timedelta(hours=24)
+
+
+def _notify_new_message(peer_id: int, sender_nickname: str | None) -> None:
+    """새 메시지 푸시를 fire-and-forget 으로 보낸다. 요청 응답을 늦추지 않는다."""
+
+    async def _run() -> None:
+        try:
+            async with AsyncSessionLocal() as db:
+                await send_push_to_user(
+                    peer_id,
+                    "새 메시지",
+                    f"{sender_nickname or '상대방'}님이 메시지를 보냈어요",
+                    db,
+                )
+        except Exception:
+            pass
+
+    asyncio.create_task(_run())
 
 
 async def _check_chat_active(user: User) -> None:
@@ -541,6 +560,7 @@ async def send_message_to_peer(
     thread.updated_at = msg.created_at or thread.updated_at
     await db.commit()
     await db.refresh(msg)
+    _notify_new_message(peer_id, current_user.nickname)
     return MessageOut.model_validate(msg)
 
 
