@@ -33,6 +33,8 @@ class Settings(BaseSettings):
 
     sentry_dsn: str = ""
 
+    firebase_service_account_json: str = ""
+
     frontend_urls: str = "http://localhost:3000"
 
     debug: bool = True
