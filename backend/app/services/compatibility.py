@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.block import UserBlock
 from app.models.user import User
 from app.schemas.compatibility import (
@@ -453,8 +454,9 @@ async def _candidate_pool(
         .where(User.id.not_in(blocked_by_me))
         .where(User.id.not_in(blocked_me))
     )
-    if current_user.gender == "male":
-        stmt = stmt.where(User.gender == "female")
-    elif current_user.gender == "female":
-        stmt = stmt.where(User.gender == "male")
+    if not settings.allow_same_gender_match:
+        if current_user.gender == "male":
+            stmt = stmt.where(User.gender == "female")
+        elif current_user.gender == "female":
+            stmt = stmt.where(User.gender == "male")
     return list((await db.execute(stmt)).scalars().all())

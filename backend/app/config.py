@@ -39,6 +39,10 @@ class Settings(BaseSettings):
 
     debug: bool = True
 
+    # 푸시 등 기능 테스트용. true 면 매칭 후보에서 이성 필터를 걷어낸다.
+    # 운영에서는 반드시 false 여야 한다.
+    allow_same_gender_match: bool = False
+
     @property
     def frontend_url(self) -> str:
         return self.frontend_urls.split(",")[0].strip()

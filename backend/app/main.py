@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -69,6 +70,27 @@ async def _audio_purge_loop() -> None:
         await asyncio.sleep(_AUDIO_PURGE_INTERVAL_S)
 
 
+_KST = timezone(timedelta(hours=9))
+
+
+async def _daily_match_notify_loop() -> None:
+    """KST 자정마다 새 인연 카드 도착 푸시를 보낸다(매칭 cycle anchor 와 동일 시각)."""
+    from app.services.push import send_daily_match_push
+
+    while True:
+        now = datetime.now(_KST)
+        next_midnight = (now + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        await asyncio.sleep((next_midnight - now).total_seconds())
+        try:
+            async with AsyncSessionLocal() as db:
+                sent = await send_daily_match_push(db)
+            print(f"[daily-match] 새 인연 알림 발송 대상 {sent}명", flush=True)
+        except Exception as exc:
+            print(f"[daily-match] 발송 실패: {exc}", flush=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.database import init_db
@@ -83,11 +105,13 @@ async def lifespan(app: FastAPI):
         print(f"[startup] knowledge_chunks count failed: {exc}", flush=True)
 
     purge_task = asyncio.create_task(_audio_purge_loop())
+    daily_match_task = asyncio.create_task(_daily_match_notify_loop())
 
     try:
         yield
     finally:
         purge_task.cancel()
+        daily_match_task.cancel()
         from app.services.cache import close_cache
         await close_cache()
         from app.database import engine

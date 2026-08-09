@@ -44,8 +44,18 @@ _SUSPENSION_DURATION = timedelta(hours=24)
 _CHAT_UNLOCK_TTL = timedelta(hours=24)
 
 
+_MESSAGE_PREVIEW = {
+    "text": "메시지를 보냈어요",
+    "image": "사진을 보냈어요",
+    "audio": "음성 메시지를 보냈어요",
+}
+
+
 def _notify_new_message(
-    peer_id: int, sender_id: int, sender_nickname: str | None
+    peer_id: int,
+    sender_id: int,
+    sender_nickname: str | None,
+    kind: str = "text",
 ) -> None:
     """새 메시지 푸시를 fire-and-forget 으로 보낸다. 요청 응답을 늦추지 않는다."""
 
@@ -55,7 +65,8 @@ def _notify_new_message(
                 await send_push_to_user(
                     peer_id,
                     "새 메시지",
-                    f"{sender_nickname or '상대방'}님이 메시지를 보냈어요",
+                    f"{sender_nickname or '상대방'}님이 "
+                    f"{_MESSAGE_PREVIEW.get(kind, _MESSAGE_PREVIEW['text'])}",
                     db,
                     # 수신자 입장에서 대화 상대는 발신자 — 앱의 채팅방 경로가 상대 user_id 기준이다.
                     {"peer_id": str(sender_id)},
@@ -654,4 +665,5 @@ async def send_media_message(
     thread.updated_at = msg.created_at or thread.updated_at
     await db.commit()
     await db.refresh(msg)
+    _notify_new_message(peer_id, current_user.id, current_user.nickname, media_type)
     return MessageOut.model_validate(msg)

@@ -89,3 +89,24 @@ async def send_push_to_user(
                 print(f"[push] 발송 실패 user_id={user_id}: {exc!r}", flush=True)
     except Exception as exc:
         print(f"[push] send_push_to_user 실패 user_id={user_id}: {exc!r}", flush=True)
+
+
+async def send_daily_match_push(db: AsyncSession) -> int:
+    """자정 새 인연 카드 안내를 기기 토큰이 등록된 모든 사용자에게 보낸다.
+
+    반환값은 발송 대상 사용자 수. 개별 발송 실패는 send_push_to_user 가 삼킨다.
+    """
+    user_ids = (
+        await db.execute(select(DeviceToken.user_id).distinct())
+    ).scalars().all()
+
+    for user_id in user_ids:
+        await send_push_to_user(
+            user_id,
+            "오늘의 새로운 인연",
+            "자정이 지나 새 인연 카드가 도착했어요",
+            db,
+            # 채팅 푸시와 달리 홈(오늘의 인연)으로 보낸다.
+            {"route": "/home"},
+        )
+    return len(user_ids)
