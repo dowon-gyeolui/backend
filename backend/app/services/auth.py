@@ -23,13 +23,17 @@ KAKAO_OAUTH_SCOPES = [
 ]
 
 
-def kakao_authorize_url() -> str:
+def kakao_authorize_url(state: str | None = None) -> str:
     params = {
         "client_id": settings.kakao_client_id,
         "redirect_uri": settings.kakao_redirect_uri,
         "response_type": "code",
         "scope": ",".join(KAKAO_OAUTH_SCOPES),
     }
+    # state 는 카카오가 콜백으로 그대로 되돌려준다. 로그인을 시작한 곳이
+    # 웹인지 네이티브 앱인지 구분하는 데 쓴다(redirect_uri 는 바뀌지 않는다).
+    if state:
+        params["state"] = state
     qs = "&".join(f"{k}={v}" for k, v in params.items())
     return f"https://kauth.kakao.com/oauth/authorize?{qs}"
 
