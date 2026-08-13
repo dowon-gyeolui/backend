@@ -1,4 +1,12 @@
-# Dev-only dependencies (preprocessing scripts, tests, etc.).
-# Currently empty: translate_chunks.py and ingest_jsonl_to_db.py both use
-# the openai SDK, which is already declared in requirements.txt as a runtime
-# dependency (needed by the retrieval service for query embedding).
+# 테스트 전용 의존성. 운영 이미지에는 설치하지 않는다.
+#
+# 설치:
+#   python3 -m venv .venv     # Python 3.12 필요 (3.13+ 는 pydantic-core/asyncpg 휠이 없다)
+#   .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+#
+# 실행:
+#   env -u PYTHONPATH .venv/bin/python -m pytest -q
+#   (ROS 가 설치된 PC 는 PYTHONPATH 오염으로 pytest 플러그인 로딩이 깨진다)
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-timeout==2.4.0
