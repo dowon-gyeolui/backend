@@ -107,8 +107,15 @@ Andrej Karpathy 가 정리한 LLM 코딩의 흔한 실수 4가지를 막기 위�
 
 ### DB 마이그레이션
 
-- Alembic 도입 전. 새 컬럼 추가 시 `database._DEV_COLUMNS` 리스트에 한 줄 추가하면 SQLite / PostgreSQL 양쪽에서 안전하게 `ALTER TABLE`.
-- 새 테이블은 모델 정의 후 `app/models/__init__.py` 에 import 만 추가.
+**Alembic 이 유일한 스키마 변경 경로다.** 기동 시 스키마를 만들거나 고치지 않는다 —
+`init_db()` 는 DB 리비전이 코드의 head 와 같은지 확인만 하고, 다르면 기동을 실패시킨다.
+
+- 모델을 고쳤으면 반드시 리비전을 만든다:
+  `env -u PYTHONPATH .venv/bin/alembic revision --autogenerate -m "설명"` → 생성된 파일을 **읽고 확인**.
+- 새 테이블은 모델 정의 후 `app/models/__init__.py` 에 import 를 추가해야 autogenerate 가 인식한다.
+- 적용: 빈 DB 는 `alembic upgrade head`, 이미 스키마가 있는 DB 는 `alembic stamp head`.
+- **운영 DB 적용은 사람이 한다.** 에이전트는 리비전 파일 작성까지만.
+- `tests/test_migrations.py` 가 모델과 head 사이의 드리프트를 `alembic check` 로 막는다.
 
 ### 비용 의식
 

@@ -45,7 +45,7 @@
 backend/app
 ├── main.py              # 앱 부팅, CORS, 라우터, init_db
 ├── config.py            # 환경변수 (Pydantic Settings)
-├── database.py          # SQLAlchemy 세션 + dev 마이그레이션
+├── database.py          # SQLAlchemy 세션 + 기동 시 스키마 리비전 확인
 │
 ├── core/
 │   └── deps.py          # get_current_user (JWT 검증)
@@ -304,15 +304,22 @@ knowledge_chunks:  id, source_title, source_author, topic, chapter
 - **HEIC → JPG** (`format: jpg`) → iOS 호환
 - 800×800 limit + quality auto → 사이즈 절감
 
-### 10. 자동 마이그레이션
+### 10. 스키마 마이그레이션 (Alembic)
 ```python
 # database.py
 init_db()
-├── Base.metadata.create_all      # 신규 테이블
-└── _dev_migrate_*                # 누락 컬럼 자동 ADD COLUMN IF NOT EXISTS
+└── DB 의 alembic_version 이 코드의 head 와 같은지 확인만 한다
+    다르면 RuntimeError 로 기동 실패 (조용한 스키마 드리프트 방지)
 ```
 
-> Alembic 도입 전까지의 임시 방편
+```bash
+alembic revision --autogenerate -m "설명"   # 모델 변경 → 리비전 생성
+alembic upgrade head                        # 빈 DB 에 적용
+alembic stamp head                          # 스키마가 이미 있는 DB 를 head 로 표시
+alembic check                               # 모델 ↔ DB 드리프트 확인
+```
+
+> 기동 시 `create_all` / `_DEV_COLUMNS` 자동 ALTER 는 제거됐다 (T-B01).
 
 ---
 
@@ -347,9 +354,10 @@ init_db()
 ### 부팅 시 자동 작업
 ```
 1. 모든 모델 import 등록 (app/models/__init__.py)
-2. Base.metadata.create_all (신규 테이블 생성)
-3. _dev_migrate (누락된 컬럼 자동 추가)
+2. DB 스키마 리비전이 Alembic head 인지 확인 (다르면 기동 실패)
 ```
+
+> 배포로 스키마가 바뀌는 경우, 새 코드를 띄우기 **전에** `alembic upgrade head` 를 돌려야 한다.
 
 ---
 
@@ -360,6 +368,7 @@ init_db()
 cd backend
 pip install -r requirements.txt
 cp .env.example .env  # 환경변수 채우기
+alembic upgrade head  # 스키마 생성 (기존 DB 라면 alembic stamp head)
 uvicorn app.main:app --reload --port 8000
 ```
 

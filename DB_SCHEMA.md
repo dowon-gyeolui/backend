@@ -7,8 +7,8 @@
 |---|---|
 | **DB 종류** | PostgreSQL 17.6 (Supabase) |
 | **연결 방식** | Session Pooler (`aws-1-ap-northeast-2.pooler.supabase.com`) |
-| **스키마 출처** | 백엔드 SQLAlchemy 모델 (`backend/app/models/`) → 서버 시작 시 자동 생성 |
-| **마이그레이션** | Alembic 없음. 새 컬럼은 `database._DEV_COLUMNS`에 추가 → `ALTER TABLE ADD COLUMN IF NOT EXISTS` |
+| **스키마 출처** | 백엔드 SQLAlchemy 모델 (`backend/app/models/`) → Alembic 리비전으로 적용 |
+| **마이그레이션** | Alembic (`backend/alembic/`). 모델 변경 → `alembic revision --autogenerate` → `alembic upgrade head`. 서버는 기동 시 리비전이 head 인지 확인만 한다 |
 | **테이블 수** | 10개 (모두 `public` 스키마) |
 | **작성 기준일** | 2026-06-07 (라이브 DB 실측 · 매칭 통합 반영) |
 
