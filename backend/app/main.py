@@ -12,6 +12,7 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from app.config import settings
 from app.core.redact import redact_url_credentials
+from app.core.request_context import CurrentUserContextMiddleware
 from app.database import AsyncSessionLocal
 from app.routers import (
     auth,
@@ -116,6 +117,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# 요청 사용자 컨텍스트를 요청마다 초기화한다(DB 세션 변수의 출처 — docs/db-roles.md §6.1).
+app.add_middleware(CurrentUserContextMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

@@ -291,6 +291,37 @@ RLS 정책은 `current_setting('app.current_user_id')` 같은 세션 변수를 �
 
 이 작업은 T-B03 범위 밖이라 **T-B10** 으로 분리했다.
 
+**✅ 앱 코드는 T-B10 에서 끝났다 (2026-08-15).** 이제 Postgres 로 붙는 모든 트랜잭션은
+자기 사용자 id 를 들고 시작한다. 구현은 세 조각이다.
+
+| 조각 | 위치 | 역할 |
+|---|---|---|
+| contextvar | `app/core/request_context.py:current_user_id` | 요청 → DB 훅으로 사용자 id 전달 |
+| 미들웨어 | 같은 파일 `CurrentUserContextMiddleware` | 요청 시작마다 컨텍스트 초기화·복원 |
+| 훅 | `app/database.py:_bind_current_user` (`after_begin`) | 트랜잭션마다 세션 변수 재설정 |
+
+구현하며 확정한 것:
+
+- `SET LOCAL` 은 **바인드 파라미터를 못 받는다.** 대신
+  `SELECT set_config('app.current_user_id', :user_id, true)` 를 쓴다 —
+  `is_local=true` 가 `SET LOCAL` 과 같은 트랜잭션 스코프이고 값은 파라미터로 넘어간다.
+- 훅은 `AppSession`(전용 동기 세션 클래스)에만 건다. 전역 `Session` 에 걸면 Alembic·
+  테스트 세션까지 잡혀 `set_config` 가 없는 SQLite 에서 터진다. 등록 자체도
+  `DATABASE_URL` 이 `postgresql` 로 시작할 때만 한다.
+- 인증되지 않은 컨텍스트는 **빈 문자열**을 건다. `app_current_user_id()` 가 NULL 을
+  돌려주므로 정책이 자동으로 거짓이 되어 아무것도 안 보인다.
+- 비용은 트랜잭션당 왕복 1회다.
+
+**RLS 를 켜기 전에 반드시 처리해야 할 잔여 항목 — 이 훅으로 덮이지 않는 경로가 둘 있다:**
+
+1. **백그라운드 루프.** `main.py` 의 `_audio_purge_loop`(만료 음성 삭제)와
+   `_daily_match_notify_loop`(자정 푸시)는 요청 컨텍스트가 없어 빈 값으로 돈다.
+   RLS 를 켜면 이 둘이 **조용히 0건 처리**하게 된다. 전용 롤로 돌리든,
+   해당 테이블 정책에 예외를 두든 선택이 필요하다.
+2. **Session 을 거치지 않는 접속.** `engine.connect()` 직접 사용(`init_db` 등)은
+   Session 이벤트를 타지 않는다. 현재는 스키마 리비전 조회뿐이라 문제없지만
+   여기에 사용자 데이터 쿼리를 추가하면 정책에 막힌다.
+
 ### 6.2 정책 초안
 
 앱이 세션 변수를 넣을 수 있게 된 뒤에 적용한다.

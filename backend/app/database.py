@@ -4,12 +4,13 @@ from pathlib import Path
 from typing import AsyncGenerator
 from uuid import uuid4
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Session, SessionTransaction
 
 from app.config import settings
+from app.core.request_context import current_user_id
 
 
 def _engine_options(url: str) -> dict:
@@ -73,7 +74,50 @@ if settings.database_url.startswith("postgresql") and settings.db_statement_time
     event.listen(engine.sync_engine, "connect", _apply_statement_timeout)
 
 
-AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+class AppSession(Session):
+    """앱이 쓰는 동기 세션 클래스. `after_begin` 훅을 이 클래스에만 건다.
+
+    전역 `Session` 에 걸면 Alembic·테스트 하네스처럼 무관한 세션까지 잡혀
+    set_config 가 없는 DB 에서 터진다.
+    """
+
+
+# `SET LOCAL` 은 바인드 파라미터를 못 받는다. set_config(..., is_local=true) 가
+# SET LOCAL 과 같은 트랜잭션 스코프이면서 값은 파라미터로 넘길 수 있다.
+_SET_CURRENT_USER = text("SELECT set_config('app.current_user_id', :user_id, true)")
+
+
+def _bind_current_user(
+    session: Session, transaction: SessionTransaction, connection: Connection
+) -> None:
+    """트랜잭션이 열릴 때마다 현재 사용자 id 를 트랜잭션 스코프 변수로 **다시** 건다.
+
+    요청 시작에 한 번 거는 방식은 작동하지 않는다. 앱은 한 요청 안에서 여러 번 commit 하고
+    (예: `routers/chat._enforce_chat_moderation`), commit 이 트랜잭션을 끝내면 값이 사라진다.
+    반대로 세션 스코프 `SET` 을 쓰면 풀링된 커넥션을 타고 **다음 요청으로 값이 새어
+    남의 데이터가 보인다**. 트랜잭션마다 다시 거는 이 훅만이 양쪽을 다 피한다.
+
+    사용자가 없으면(로그인 전 요청·백그라운드 루프) 빈 문자열을 건다. 트랜잭션 스코프라
+    안 걸어도 값이 남지는 않지만, "모든 트랜잭션은 자기 사용자로 명시적으로 덮어쓴다"는
+    불변식이 있어야 나중에 이 코드를 고칠 때 실수가 드러난다. 대가는 트랜잭션당 왕복 1회다.
+    """
+    user_id = current_user_id.get()
+    connection.execute(
+        _SET_CURRENT_USER, {"user_id": "" if user_id is None else str(user_id)}
+    )
+
+
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    expire_on_commit=False,
+    class_=AsyncSession,
+    sync_session_class=AppSession,
+)
+
+# SQLite(로컬·테스트)에는 set_config 가 없다. Postgres 에서만 건다.
+if settings.database_url.startswith("postgresql"):
+    event.listen(AppSession, "after_begin", _bind_current_user)
+
 
 class Base(DeclarativeBase):
     pass

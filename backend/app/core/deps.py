@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.request_context import current_user_id
 from app.core.security import decode_access_token
 from app.database import get_db
 from app.models.user import User
@@ -19,6 +20,10 @@ async def get_current_user(
         user_id = decode_access_token(token)
         if user_id is None:
             raise HTTPException(status_code=401, detail="유효하지 않거나 만료된 토큰입니다.")
+
+        # DB 조회보다 먼저 건다. 토큰은 서명되어 있어 여기서의 user_id 는 이미 신뢰할 수
+        # 있고, 바로 아래 db.get 이 여는 트랜잭션부터 세션 변수가 붙어야 한다.
+        current_user_id.set(user_id)
 
         user = await db.get(User, user_id)
         if user is None:
@@ -35,6 +40,7 @@ async def get_current_user(
             db.add(user)
             await db.commit()
             await db.refresh(user)
+        current_user_id.set(user.id)
         return user
 
     raise HTTPException(status_code=401, detail="Authentication required")
