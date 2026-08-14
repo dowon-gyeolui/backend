@@ -98,8 +98,11 @@ Andrej Karpathy 가 정리한 LLM 코딩의 흔한 실수 4가지를 막기 위�
 - FastAPI 는 `postgres` superuser 로 DB 에 붙으므로 **Postgres RLS 가 무력화**된다. 사용자 격리는 반드시 app 레이어 (`current_user.id` 로 filter) 에서 보장.
 - 탈퇴 시 hard delete + 카카오 unlink (PIPA 준수). 순서는 `services/users.delete_account` 참고.
 - 채팅 메시지는 3-layer moderation (regex → 욕설 → OpenAI Moderation) 통과해야 DB 도달. 우회 금지.
-- `.env` 의 시크릿이 응답·로그에 평문으로 나가지 않도록 마스킹. `app/main.py:_redact_db_url` 패턴 참고.
-- 진단 엔드포인트(`/health/db` 등)는 production (`debug=False`) 에서 404 처리.
+- `.env` 의 시크릿이 응답·로그에 평문으로 나가지 않도록 마스킹. 외부 SDK 예외를 응답·로그에
+  실을 때는 `app/core/redact.py:redact_secrets()` 를 반드시 거친다 (예외 원문에 접속 URL·API 키가 섞인다).
+- 진단·테스트 엔드포인트(`/health/db`, `/users/me/upgrade-demo`, `/payments/test-topup`)는
+  production (`debug=False`) 에서 404 처리. 새로 만들면 `tests/test_health_and_secrets.py` 의
+  `_DIAGNOSTIC_ENDPOINTS` 에 추가한다 (안 하면 래칫 테스트가 실패한다).
 
 ### 한국어 UI
 

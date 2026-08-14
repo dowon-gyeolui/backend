@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from app.config import settings
+from app.core.redact import redact_url_credentials
 from app.database import AsyncSessionLocal
 from app.routers import (
     auth,
@@ -39,20 +40,6 @@ if settings.sentry_dsn:
         )
     except Exception as exc:
         print(f"[startup] Sentry 초기화 실패 — 무시하고 계속: {exc!r}", flush=True)
-
-
-def _redact_db_url(url: str) -> str:
-    try:
-        scheme, rest = url.split("://", 1)
-        if "@" not in rest:
-            return url
-        userinfo, hostpart = rest.rsplit("@", 1)
-        if ":" in userinfo:
-            user, _ = userinfo.split(":", 1)
-            return f"{scheme}://{user}:***@{hostpart}"
-        return url
-    except ValueError:
-        return "***"
 
 
 _AUDIO_PURGE_INTERVAL_S = 3600
@@ -98,7 +85,10 @@ async def lifespan(app: FastAPI):
     from app.database import init_db
     await init_db()
 
-    print(f"[startup] DATABASE_URL={_redact_db_url(settings.database_url)}", flush=True)
+    print(
+        f"[startup] DATABASE_URL={redact_url_credentials(settings.database_url)}",
+        flush=True,
+    )
     try:
         async with AsyncSessionLocal() as db:
             result = await db.execute(text("SELECT COUNT(*) FROM knowledge_chunks"))

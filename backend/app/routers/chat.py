@@ -16,6 +16,7 @@ from sqlalchemy import and_, delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
+from app.core.redact import redact_secrets
 from app.database import AsyncSessionLocal, get_db
 from app.models.block import UserBlock
 from app.models.card_unlock import CardUnlock
@@ -644,13 +645,17 @@ async def send_media_message(
         else:
             url = upload_chat_audio(raw, sender_id=current_user.id)
     except StorageNotConfiguredError as e:
+        # 예외 원문에는 접속 URL·API 키가 섞일 수 있어 응답에 싣지 않는다. 로그도 마스킹한다.
+        print(f"[storage] 저장소 미설정: {redact_secrets(str(e))}", flush=True)
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e),
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="미디어 서버가 준비되지 않았어요. 잠시 후 다시 시도해 주세요.",
         ) from e
     except Exception as e:
+        print(f"[storage] 채팅 미디어 업로드 실패: {redact_secrets(repr(e))}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"미디어 업로드 실패: {e}",
+            detail="미디어 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.",
         ) from e
 
     thread = await _get_or_create_thread(current_user.id, peer_id, db)

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.deps import get_current_user
+from app.core.redact import redact_secrets
 from app.core.security import hash_password
 from app.database import get_db
 from app.models.device_token import DeviceToken
@@ -251,14 +252,17 @@ async def upload_my_photo(
     try:
         result = upload_image_full(raw, public_id=f"user_{current_user.id}")
     except StorageNotConfiguredError as e:
+        # 예외 원문에는 접속 URL·API 키가 섞일 수 있어 응답에 싣지 않는다. 로그도 마스킹한다.
+        print(f"[storage] 저장소 미설정: {redact_secrets(str(e))}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(e),
+            detail="사진 서버가 준비되지 않았어요. 잠시 후 다시 시도해 주세요.",
         ) from e
     except Exception as e:
+        print(f"[storage] 프로필 사진 업로드 실패: {redact_secrets(repr(e))}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"이미지 호스팅 서버 오류: {e}",
+            detail="사진 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.",
         ) from e
 
     current_user.photo_url = result["url"]
@@ -342,14 +346,16 @@ async def upload_my_photo_to_gallery(
     try:
         result = upload_image_full(raw)
     except StorageNotConfiguredError as e:
+        print(f"[storage] 저장소 미설정: {redact_secrets(str(e))}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(e),
+            detail="사진 서버가 준비되지 않았어요. 잠시 후 다시 시도해 주세요.",
         ) from e
     except Exception as e:
+        print(f"[storage] 갤러리 사진 업로드 실패: {redact_secrets(repr(e))}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"이미지 호스팅 서버 오류: {e}",
+            detail="사진 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.",
         ) from e
 
     photo = await photos_service.add_photo(

@@ -50,7 +50,9 @@ async def test_topup(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if settings.toss_secret_key:
+    # 무료로 스타를 얹어주는 테스트 경로다. 운영(debug=False)에서는 존재 자체를 숨긴다.
+    # 결제 키가 붙어 있으면 개발 환경이라도 실결제와 섞이지 않게 함께 막는다.
+    if not settings.debug or settings.toss_secret_key:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Not found",
