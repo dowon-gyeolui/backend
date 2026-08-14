@@ -23,6 +23,21 @@ _firebase_app = None
 _init_attempted = False
 
 
+def is_fcm_registration_token(token: str) -> bool:
+    """FCM 등록 토큰 형식인지 판별한다.
+
+    iOS 앱이 예전에 쓰던 @capacitor/push-notifications 는 **APNs 디바이스 토큰**을
+    올려보냈다. 이 서비스는 firebase-admin 의 messaging.send() 로만 발송하므로 그 토큰으로는
+    아무것도 보낼 수 없다(iOS 푸시 100% 실패 — T-C08). 앱은 이제 양 플랫폼 모두
+    FCM 등록 토큰을 보내지만, DB 에 남은 옛 APNs 토큰은 여전히 걸러내야 한다.
+
+    형식 차이가 분명해서 문자열만으로 구분된다:
+      FCM  `cJ1x...:APA91bF...`  — 콜론으로 나뉜 두 부분
+      APNs `740f4707bebcf74f...` — 콜론 없는 16진수
+    """
+    return ":" in token
+
+
 def _init_firebase():
     global _firebase_app, _init_attempted
     if _init_attempted:
@@ -74,6 +89,15 @@ async def send_push_to_user(
         ).scalars().all()
 
         for token in tokens:
+            # 옛 APNs 토큰은 보내봐야 확정 실패다. 삭제는 여기서 하지 않는다 —
+            # 이 함수는 호출부의 세션에 쓰기를 하지 않는다는 약속을 지킨다.
+            # 정리는 앱이 새 FCM 토큰을 등록할 때 POST /users/me/device-token 이 한다.
+            if not is_fcm_registration_token(token):
+                print(
+                    f"[push] FCM 토큰이 아니라 건너뜀(옛 APNs 토큰) user_id={user_id}",
+                    flush=True,
+                )
+                continue
             try:
                 # messaging.send 는 동기 HTTP 호출이라 그대로 부르면 이벤트 루프가 막힌다.
                 await asyncio.to_thread(

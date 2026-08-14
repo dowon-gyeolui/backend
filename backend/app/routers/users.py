@@ -31,6 +31,7 @@ from app.services import matching as matching_service
 from app.services import photos as photos_service
 from app.services import users as users_service
 from app.services.photo_moderation import verify_profile_photo
+from app.services.push import is_fcm_registration_token
 from app.services.rate_limit import check_daily_limit
 from app.services.storage import (
     StorageNotConfiguredError,
@@ -90,6 +91,18 @@ async def register_device_token(
                 platform=data.platform,
             )
         )
+
+    # 옛 iOS 앱이 올린 APNs 디바이스 토큰을 이 사용자 것부터 걷어낸다(T-C08).
+    # FCM 으로는 발송할 수 없는 죽은 값이라, 새 FCM 토큰이 들어온 지금이 정리 시점이다.
+    if is_fcm_registration_token(data.token):
+        for stale in (
+            await db.execute(
+                select(DeviceToken).where(DeviceToken.user_id == current_user.id)
+            )
+        ).scalars():
+            if not is_fcm_registration_token(stale.token):
+                await db.delete(stale)
+
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
