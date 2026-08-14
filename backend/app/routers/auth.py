@@ -20,7 +20,7 @@ router = APIRouter()
 
 # 번들 앱은 https://localhost 에서 돌아가 백엔드가 리다이렉트로 되돌려줄 수 없다.
 # 대신 커스텀 스킴으로 되돌리면 OS 가 앱을 깨워 준다(Capacitor appUrlOpen).
-_APP_URL_SCHEME = "com.zami.app"
+_APP_URL_SCHEME = "com.melobe.app"
 _APP_STATE = "app"
 
 
