@@ -78,7 +78,7 @@ Alembic 이 `ALTER TABLE` 을 하려면 그 테이블의 소유자여야 한다.
 | `star_orders` | ✅ | ✅ | ✅ | ✅ | `services/payments.py` (PENDING→PAID), 탈퇴 정리 |
 | `daily_ai_texts` | ✅ | ✅ | — | ✅ | `services/daily_ai.py`, 탈퇴 정리 |
 | `device_tokens` | ✅ | ✅ | ✅ | ✅ | upsert(`routers/users.register_device_token`). **D 는 지금 코드엔 없지만 F-1 을 고치면 필요하다 — 미리 준다** |
-| `knowledge_chunks` | ✅ | ✅ | — | — | `services/knowledge/ingestion.py` 는 INSERT 만. 번역·임베딩 재계산 스크립트는 migrator 로 돌린다 |
+| `knowledge_chunks` | ✅ | ❌ | ❌ | ❌ | **T-B08 에서 HTTP 적재 엔드포인트를 제거**해 앱에는 검색(SELECT) 경로만 남았다. 적재·번역·임베딩 재계산 스크립트는 migrator 로 돌린다 |
 | `audit_logs` | ✅ | ✅ | ❌ | ❌ | **의도적으로 U/D 를 주지 않는다.** 감사 로그 append-only(ADM-LOG-001)를 앱 코드가 아니라 **DB 권한으로 강제**한다 |
 | `alembic_version` | ✅ | — | — | — | 기동 시 리비전 확인(`init_db`)이 **읽는다**. 빠뜨리면 기동이 permission denied 로 죽는다 |
 
@@ -239,7 +239,10 @@ RAG 원전 코퍼스에 텍스트를 **삽입**할 수 있다.
 - 사용자 격리 문제는 아니지만(테이블이 사용자 소유가 아니다), 롤 설계에는 영향이 있다 —
   `melobe_app` 에 `knowledge_chunks` INSERT 를 주는 근거가 이 공개 엔드포인트뿐이다.
   인증을 붙이고 적재를 스크립트(migrator 롤)로 옮기면 INSERT 권한도 회수할 수 있다.
-- → **T-B08**
+- → **T-B08 에서 해소.** 적재 2개(`/chunks`·`/ingest`)는 호출자가 없어 라우터에서 제거했고
+  (`scripts/ingest_jsonl_to_db.py` 만 남는다), `/retrieve` 에는 `Depends(get_current_user)`
+  를 붙였다. §3 매트릭스의 `knowledge_chunks` INSERT 도 회수했다.
+  회귀 방어: `tests/test_knowledge_auth.py`
 
 #### F-3 (중간) — 차단한 상대의 프로필·궁합을 계속 조회할 수 있다
 

@@ -1,101 +1,19 @@
-"""원전 지식 청크 적재/검색 엔드포인트."""
-from fastapi import APIRouter, Depends, status
-from sqlalchemy import select
+"""원전 지식 청크 검색 엔드포인트.
+
+적재(HTTP `POST /chunks`, `POST /ingest`)는 제거했다. 코퍼스에 텍스트를 심을 수 있으면
+사주 풀이 LLM 의 grounding 이 오염된다(간접 프롬프트 인젝션). 적재 경로는
+`scripts/ingest_jsonl_to_db.py` 하나만 남긴다.
+"""
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import get_current_user
 from app.database import get_db
-from app.models.knowledge import KnowledgeChunk
-from app.schemas.knowledge import (
-    KnowledgeChunkCreate,
-    KnowledgeChunkResponse,
-    KnowledgeIngestRequest,
-    KnowledgeIngestResponse,
-    KnowledgeQuery,
-    KnowledgeRetrievalResult,
-)
-from app.services.knowledge import ingestion, retrieval
+from app.models.user import User
+from app.schemas.knowledge import KnowledgeQuery, KnowledgeRetrievalResult
+from app.services.knowledge import retrieval
 
 router = APIRouter()
-
-
-@router.post(
-    "/chunks",
-    response_model=KnowledgeChunkResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="원전 청크 단일 추가 (개발/테스트용)",
-    description=(
-        "이미 청킹된 텍스트 한 조각을 그대로 저장합니다. "
-        "동일 content_hash가 이미 존재하면 기존 청크를 반환합니다."
-    ),
-)
-async def create_chunk(
-    data: KnowledgeChunkCreate,
-    db: AsyncSession = Depends(get_db),
-):
-    content_hash = ingestion.hash_content(data.content)
-
-    existing = (
-        await db.execute(
-            select(KnowledgeChunk).where(KnowledgeChunk.content_hash == content_hash)
-        )
-    ).scalar_one_or_none()
-
-    if existing:
-        return existing
-
-    chunk = KnowledgeChunk(
-        source_type=data.source_type,
-        source_title=data.source_title,
-        source_author=data.source_author,
-        topic=data.topic,
-        chapter=data.chapter,
-        section=data.section,
-        chunk_index=data.chunk_index,
-        content=data.content,
-        content_hash=content_hash,
-        language=data.language,
-        tags=data.tags,
-    )
-    db.add(chunk)
-    await db.commit()
-    await db.refresh(chunk)
-    return chunk
-
-
-@router.post(
-    "/ingest",
-    response_model=KnowledgeIngestResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="원문 텍스트 일괄 적재 (청킹 포함)",
-    description=(
-        "원문 텍스트를 단락 기준으로 청킹하여 일괄 저장합니다. "
-        "content_hash가 겹치는 청크는 건너뜁니다."
-    ),
-)
-async def ingest_knowledge(
-    data: KnowledgeIngestRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    result = await ingestion.ingest_text(
-        source_type=data.source_type,
-        source_title=data.source_title,
-        text=data.text,
-        db=db,
-        source_author=data.source_author,
-        topic=data.topic,
-        chapter=data.chapter,
-        section=data.section,
-        language=data.language,
-        tags=data.tags,
-        max_chars=data.max_chars,
-        starting_index=data.starting_index,
-    )
-    return KnowledgeIngestResponse(
-        total=result.total,
-        created=result.created,
-        skipped_duplicate=result.skipped_duplicate,
-        chunks=[KnowledgeChunkResponse.model_validate(c) for c in result.chunks],
-    )
 
 
 @router.post(
@@ -111,5 +29,6 @@ async def ingest_knowledge(
 async def retrieve_knowledge(
     query: KnowledgeQuery,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return await retrieval.retrieve(query, db)

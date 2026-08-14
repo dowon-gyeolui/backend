@@ -83,7 +83,7 @@ backend/app
 | `chat.py` | `/chat/threads`, `/chat/with/{peer}/messages`, `/unread-summary` |
 | `recommendations.py` | `/recommendations/me`, `/pair/{id}` |
 | `reports.py` | `/reports` |
-| `knowledge.py` | `/knowledge/chunks`, `/ingest`, `/retrieve` |
+| `knowledge.py` | `/knowledge/retrieve` (인증 필요. 적재는 `scripts/ingest_jsonl_to_db.py` 로만) |
 
 ### services — 비즈니스 로직
 
