@@ -27,6 +27,7 @@ from datetime import date  # noqa: E402
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy import event  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
 from app.config import settings  # noqa: E402
@@ -62,6 +63,16 @@ async def engine():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    # SQLite 는 외래키 제약을 커넥션마다 명시적으로 켜야 검사한다(기본 OFF).
+    # 꺼둔 채로 두면 운영(Postgres)에서 ForeignKeyViolation 으로 터지는 코드가
+    # 테스트에서는 조용히 통과한다 — 실제로 탈퇴 버그(T-B07)를 이 때문에 놓쳤다.
+    @event.listens_for(eng.sync_engine, "connect")
+    def _enable_sqlite_fk(dbapi_conn, _record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     async with eng.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield eng

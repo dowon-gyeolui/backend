@@ -31,3 +31,14 @@ async def test_tables_are_created(engine):
         )
         names = {r[0] for r in rows}
     assert "users" in names
+
+
+@pytest.mark.asyncio
+async def test_foreign_keys_are_enforced(engine):
+    """SQLite 는 FK 검사가 기본 OFF 라, 켜두지 않으면 운영(Postgres)에서만 터지는
+    FK 위반을 테스트가 통과시킨다. 실제로 탈퇴 버그(T-B07)를 그렇게 놓쳤다."""
+    from sqlalchemy import text
+
+    async with engine.connect() as conn:
+        enabled = (await conn.execute(text("PRAGMA foreign_keys"))).scalar_one()
+    assert enabled == 1, "테스트 커넥션에 PRAGMA foreign_keys 가 꺼져 있습니다"

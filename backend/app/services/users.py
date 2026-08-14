@@ -7,6 +7,7 @@ from app.models.block import UserBlock
 from app.models.card_unlock import CardUnlock
 from app.models.chat import ChatThread, Message
 from app.models.daily_ai_text import DailyAiText
+from app.models.device_token import DeviceToken
 from app.models.interview import InterviewAnswer
 from app.models.moderation import UserStrike
 from app.models.payment import StarOrder
@@ -229,6 +230,10 @@ async def delete_account(user: User, db: AsyncSession) -> None:
 
     await db.execute(
         delete(StarOrder).where(StarOrder.user_id == user.id)
+    )
+
+    await db.execute(
+        delete(DeviceToken).where(DeviceToken.user_id == user.id)
     )
 
     kakao_id = user.kakao_id
