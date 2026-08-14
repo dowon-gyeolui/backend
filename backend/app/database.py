@@ -4,26 +4,75 @@ from pathlib import Path
 from typing import AsyncGenerator
 from uuid import uuid4
 
+from sqlalchemy import event
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
 
-_engine_kwargs: dict = {"echo": settings.debug}
-if settings.database_url.startswith("postgresql"):
-    _engine_kwargs.update(
-        pool_size=5,
-        max_overflow=5,
+
+def _engine_options(url: str) -> dict:
+    """create_async_engine 옵션. 풀 관련 값은 전부 환경변수에서 온다.
+
+    SQLite(로컬·테스트)는 풀 설정이 의미가 없어 echo 만 준다.
+    """
+    options: dict = {"echo": settings.debug}
+    if not url.startswith("postgresql"):
+        return options
+
+    # ── 동시 커넥션 상한 계산 ────────────────────────────────────────────────
+    # 이 식을 넘기면 DB 가 새 연결을 거절해 앱 전체가 죽는다. 풀을 키우기 전에 반드시 계산할 것.
+    #
+    #   인스턴스당 최대 = (DB_POOL_SIZE + DB_MAX_OVERFLOW) × uvicorn 워커 수
+    #   전체          = 인스턴스당 최대 × Render 인스턴스 수
+    #   전체 + 여유분 5(마이그레이션·psql·Supabase Studio) ≤ DB 커넥션 상한
+    #
+    # DB 커넥션 상한은 접속 경로에 따라 다르다:
+    #   · Session pooler(현재)  → Supabase Dashboard > Database > Connection pooling 의 "Pool Size"
+    #   · Direct connection     → 인스턴스 크기별 max_connections (여유분을 뺀 값)
+    #
+    # 기본값 5+5 는 워커 1개 · 인스턴스 1개(= 최대 10) 기준이다.
+    # 인스턴스나 워커를 늘리면 이 식으로 다시 계산해 환경변수를 낮춰야 한다.
+    options.update(
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        # 풀이 고갈됐을 때 무한정 매달리지 않는다. 여기서 TimeoutError 가 나면
+        # main.py 의 핸들러가 503 + Retry-After 로 바꿔 내보낸다.
+        pool_timeout=settings.db_pool_timeout_seconds,
         pool_pre_ping=True,
-        pool_recycle=300,
+        pool_recycle=settings.db_pool_recycle_seconds,
         connect_args={
             "statement_cache_size": 0,
             "prepared_statement_cache_size": 0,
             "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4().hex}__",
         },
     )
-engine = create_async_engine(settings.database_url, **_engine_kwargs)
+    return options
+
+
+engine = create_async_engine(settings.database_url, **_engine_options(settings.database_url))
+
+
+def _apply_statement_timeout(dbapi_connection, _record) -> None:
+    """새 커넥션마다 서버측 statement_timeout 을 건다.
+
+    startup parameter(`server_settings`)로 넣지 않는 이유: 풀러가 허용하지 않는
+    startup parameter 는 접속 자체를 실패시킨다. 평범한 SET 쿼리로 걸면
+    Session pooler 와 Direct connection 양쪽에서 똑같이 동작한다.
+    pool_pre_ping 으로 커넥션이 다시 열려도 이 훅이 다시 돈다.
+    """
+    dbapi_connection.run_async(
+        lambda conn: conn.execute(
+            f"SET statement_timeout = {settings.db_statement_timeout_ms}"
+        )
+    )
+
+
+if settings.database_url.startswith("postgresql") and settings.db_statement_timeout_ms > 0:
+    event.listen(engine.sync_engine, "connect", _apply_statement_timeout)
+
+
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 class Base(DeclarativeBase):

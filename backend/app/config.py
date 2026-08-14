@@ -19,6 +19,15 @@ class Settings(BaseSettings):
 
     database_url: str = _DEFAULT_SQLITE_URL
 
+    # 커넥션 풀·타임아웃. PostgreSQL 일 때만 쓰인다(SQLite 는 풀이 의미 없다).
+    # 값을 바꾸기 전에 app/database.py 의 동시 커넥션 상한 계산식을 읽을 것.
+    db_pool_size: int = 5
+    db_max_overflow: int = 5
+    db_pool_timeout_seconds: float = 10.0
+    db_pool_recycle_seconds: int = 300
+    # 서버측 statement_timeout(ms). 0 이면 걸지 않는다.
+    db_statement_timeout_ms: int = 15000
+
     kakao_client_id: str = ""
     kakao_client_secret: str = ""
     kakao_redirect_uri: str = "http://localhost:8000/auth/kakao/callback"

@@ -4,9 +4,11 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from app.config import settings
 from app.database import AsyncSessionLocal
@@ -132,6 +134,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_DB_BUSY_RETRY_AFTER_S = 5
+
+
+@app.exception_handler(PoolTimeoutError)
+async def _db_pool_exhausted(request: Request, exc: PoolTimeoutError) -> JSONResponse:
+    """커넥션 풀 고갈을 500 이 아니라 503 으로 알린다.
+
+    500 은 "서버가 고장났다"라서 클라이언트가 재시도하지 않는다. 풀 고갈은 일시적
+    혼잡이므로 503 + Retry-After 로 "잠시 후 다시 오라"고 알려야 한다.
+    예외 메시지에는 접속 정보가 섞일 수 있어 응답에 싣지 않는다.
+    """
+    print(f"[db-pool] 커넥션 풀 고갈: {request.method} {request.url.path}", flush=True)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "서버가 일시적으로 혼잡합니다. 잠시 후 다시 시도해 주세요."},
+        headers={"Retry-After": str(_DB_BUSY_RETRY_AFTER_S)},
+    )
+
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(users.router, prefix="/users", tags=["users"])
