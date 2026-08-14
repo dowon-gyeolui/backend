@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.compatibility import CompatibilityReport
 from app.services import compatibility as compatibility_service
+from app.services import matching as matching_service
 
 router = APIRouter()
 
@@ -37,6 +38,11 @@ async def get_compatibility_report(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="자기 자신과의 리포트는 생성하지 않습니다.",
+        )
+    if await matching_service.is_blocked(current_user.id, peer_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="차단된 상대와의 리포트는 제공하지 않습니다.",
         )
     _require_birth_data(current_user, is_self=True)
 

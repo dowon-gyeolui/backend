@@ -27,6 +27,7 @@ from app.schemas.user import (
     PublicProfileResponse,
     UserProfileResponse,
 )
+from app.services import matching as matching_service
 from app.services import photos as photos_service
 from app.services import users as users_service
 from app.services.photo_moderation import verify_profile_photo
@@ -99,6 +100,11 @@ async def get_public_profile(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if await matching_service.is_blocked(current_user.id, user_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="차단된 상대의 프로필은 볼 수 없어요.",
+        )
     target = await db.get(User, user_id)
     if target is None:
         raise HTTPException(
