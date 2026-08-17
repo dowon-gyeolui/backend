@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.block import UserBlock
 from app.models.card_unlock import KIND_DAILY, KIND_EXTRA, CardUnlock
+from app.models.star_ledger import ENTRY_CARD_UNLOCK
 from app.models.user import User
 from app.schemas.compatibility import MatchCandidate
+from app.services import star_ledger
 from app.services.compatibility import (
     _build_card_for,
     _candidate_photos,
@@ -216,13 +218,16 @@ async def unlock_extra(user: User, db: AsyncSession) -> MatchCandidate:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="더 이상 추천할 인연이 없어요.",
         )
-    if user.star_balance < STAR_COST_PER_CARD:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="스타가 부족합니다.",
-        )
-
-    user.star_balance -= STAR_COST_PER_CARD
+    # 차감과 카드 생성은 같은 트랜잭션이어야 한다(OI-PAY-004). 잔액 부족이면 record 가
+    # 402 를 던지므로 카드도 만들어지지 않는다. 멱등키가 (사용자:후보) 라서 같은 카드에
+    # 두 번 과금되지 않는다 — 카드 자체도 uq_card_unlock_pair 로 한 번만 생긴다.
+    await star_ledger.record(
+        db,
+        user,
+        entry_type=ENTRY_CARD_UNLOCK,
+        reference_id=f"{user.id}:{candidate.id}",
+        amount=-STAR_COST_PER_CARD,
+    )
     db.add(CardUnlock(user_id=user.id, candidate_id=candidate.id, kind=KIND_EXTRA))
     await db.commit()
     return await _reveal(user, candidate, db)

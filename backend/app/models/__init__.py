@@ -12,4 +12,5 @@ from app.models.moderation import UserStrike
 from app.models.payment import StarOrder
 from app.models.photo import UserPhoto
 from app.models.report import Report
+from app.models.star_ledger import StarLedger
 from app.models.user import User

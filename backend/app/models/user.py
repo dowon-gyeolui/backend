@@ -2,7 +2,15 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    Date,
+    DateTime,
+    Integer,
+    String,
+)
 
 from app.database import Base
 
@@ -13,6 +21,11 @@ def _utcnow() -> datetime:
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        # 잔액은 원장(StarLedger)을 통해서만 바뀌어야 하고, 어떤 경로로도 음수가 될 수
+        # 없다. 앱 레이어 검사를 빠뜨린 코드가 생겨도 여기서 마지막으로 막힌다.
+        CheckConstraint("star_balance >= 0", name="ck_users_star_balance_non_negative"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     kakao_id = Column(String, unique=True, nullable=True, index=True)

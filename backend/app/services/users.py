@@ -13,6 +13,7 @@ from app.models.moderation import UserStrike
 from app.models.payment import StarOrder
 from app.models.photo import UserPhoto
 from app.models.report import Report
+from app.models.star_ledger import StarLedger
 from app.models.user import User
 from app.schemas.user import (
     BirthDataCreate,
@@ -230,6 +231,10 @@ async def delete_account(user: User, db: AsyncSession) -> None:
 
     await db.execute(
         delete(StarOrder).where(StarOrder.user_id == user.id)
+    )
+
+    await db.execute(
+        delete(StarLedger).where(StarLedger.user_id == user.id)
     )
 
     await db.execute(

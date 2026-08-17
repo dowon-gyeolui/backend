@@ -1,18 +1,23 @@
 """스타 충전 주문 생성/승인 및 테스트 충전 엔드포인트."""
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.deps import get_current_user
 from app.database import get_db
+from app.models.star_ledger import ENTRY_TEST_TOPUP
 from app.models.user import User
 from app.schemas.payment import (
     BalanceResponse,
     ConfirmRequest,
     OrderCreate,
     OrderResponse,
+    ReconcileResponse,
 )
 from app.services import payments as payments_service
+from app.services import star_ledger
 
 router = APIRouter()
 
@@ -45,6 +50,20 @@ async def confirm_payment(
     return BalanceResponse(star_balance=current_user.star_balance)
 
 
+@router.post("/reconcile", response_model=ReconcileResponse)
+async def reconcile_pending(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """미확정 주문을 결제사 상태 기준으로 정리한다. 앱이 다시 켜질 때 호출한다.
+
+    결제 도중 앱이 죽으면 승인 요청이 서버에 닿지 않아 주문이 붕 뜬다.
+    성공한 결제였으면 스타를 지급하고, 실패·이탈이었으면 주문을 닫는다. 멱등하다.
+    """
+    result = await payments_service.reconcile_pending_orders(current_user, db)
+    return ReconcileResponse(**result)
+
+
 @router.post("/test-topup", response_model=BalanceResponse)
 async def test_topup(
     db: AsyncSession = Depends(get_db),
@@ -57,6 +76,15 @@ async def test_topup(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Not found",
         )
-    current_user.star_balance += _TEST_TOPUP_STARS
+    # 개발용이라도 잔액에 직접 대입하지 않는다 — "잔액은 원장으로만 바뀐다"가 깨지면
+    # 원장 합계와 잔액이 어긋나 대사(對査)가 불가능해진다. 매 호출이 새 충전이므로
+    # 멱등키는 매번 새로 만든다.
+    await star_ledger.record(
+        db,
+        current_user,
+        entry_type=ENTRY_TEST_TOPUP,
+        reference_id=uuid.uuid4().hex,
+        amount=_TEST_TOPUP_STARS,
+    )
     await db.commit()
     return BalanceResponse(star_balance=current_user.star_balance)
