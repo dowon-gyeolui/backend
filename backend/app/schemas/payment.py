@@ -27,3 +27,11 @@ class ConfirmRequest(BaseModel):
 
 class BalanceResponse(BaseModel):
     star_balance: int
+
+
+class ReconcileResponse(BaseModel):
+    """미확정 주문 정리 결과. `credited_stars` 가 0 보다 크면 화면에 알린다."""
+
+    star_balance: int
+    credited_stars: int
+    settled_orders: int
