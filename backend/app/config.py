@@ -44,6 +44,13 @@ class Settings(BaseSettings):
 
     firebase_service_account_json: str = ""
 
+    # 가입(온보딩 완료) 알림 메일. SMTP 가 아니라 HTTP API(Resend)를 쓴다 —
+    # Render 는 아웃바운드 SMTP(25/465/587)를 막는 경우가 있어 조용히 실패한다.
+    # 키나 수신 주소가 비어 있으면 알림은 비활성화되고 온보딩에는 영향이 없다.
+    alert_email_api_key: str = ""
+    alert_email_to: str = ""
+    alert_email_from: str = "MeloBe 알림 <onboarding@resend.dev>"
+
     frontend_urls: str = "http://localhost:3000"
 
     debug: bool = True

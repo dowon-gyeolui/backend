@@ -22,10 +22,15 @@ from app.schemas.user import (
     ProfileUpdate,
     PublicProfileResponse,
 )
+from app.services.alert_email import schedule_onboarding_alert
 from app.services.storage import delete_image
 
 
 async def set_birth_data(user: User, data: BirthDataCreate, db: AsyncSession) -> User:
+    # 생년월일이 처음 채워지는 순간이 온보딩의 마지막 필수 단계다(닉네임은 그 앞 단계에서
+    # 이미 저장된다). 같은 요청이 다시 와도 birth_date 가 이미 있으므로 알림은 한 번뿐이다.
+    is_onboarding_completion = user.birth_date is None
+
     user.birth_date = data.birth_date
     user.birth_time = data.birth_time
     user.calendar_type = data.calendar_type
@@ -33,6 +38,8 @@ async def set_birth_data(user: User, data: BirthDataCreate, db: AsyncSession) ->
     user.gender = data.gender
     await db.commit()
     await db.refresh(user)
+    if is_onboarding_completion:
+        schedule_onboarding_alert(user.id, user.nickname)
     return user
 
 

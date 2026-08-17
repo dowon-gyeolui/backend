@@ -18,6 +18,8 @@ os.environ["SENTRY_DSN"] = ""
 os.environ["OPENAI_API_KEY"] = ""
 os.environ["TOSS_SECRET_KEY"] = ""
 os.environ["FIREBASE_SERVICE_ACCOUNT_JSON"] = ""
+os.environ["ALERT_EMAIL_API_KEY"] = ""   # 테스트가 실제 메일을 보내지 않도록
+os.environ["ALERT_EMAIL_TO"] = ""
 os.environ["ALLOW_SAME_GENDER_MATCH"] = "false"
 # .env 를 읽어 위 값을 덮어쓰지 않도록(개발자 PC 에 운영 .env 가 있을 수 있다)
 os.environ["ENV_FILE"] = ""
