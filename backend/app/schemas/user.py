@@ -51,6 +51,14 @@ class LoginResponse(BaseModel):
     is_new: bool
 
 
+class AppLoginCodeExchange(BaseModel):
+    """네이티브 앱이 딥링크로 받은 1회용 코드를 토큰으로 바꿀 때 보내는 값."""
+
+    code: str = Field(min_length=1, max_length=128)
+    # RFC 7636 이 정한 code_verifier 길이 범위.
+    code_verifier: str = Field(min_length=43, max_length=128)
+
+
 class BirthDataCreate(BaseModel):
     birth_date: date
     birth_time: Optional[str] = None

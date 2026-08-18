@@ -127,3 +127,23 @@ async def close_cache() -> None:
         except Exception:
             pass
         _client = None
+
+
+async def cache_pop(key: str) -> Optional[str]:
+    """값을 읽고 즉시 지운다 — 1회용 로그인 코드처럼 재사용되면 안 되는 값에 쓴다.
+
+    Redis 가 있으면 GETDEL 로 원자적으로 처리한다. 여기서 값을 못 읽었다고
+    메모리 사본으로 되돌아가면 같은 코드가 두 번 통과할 수 있어, Redis 응답이
+    권위 있는 답이다(장애로 예외가 난 경우에만 메모리를 본다).
+    """
+    client = _get_client()
+    if client is not None:
+        try:
+            value = await client.getdel(key)
+            _memory.pop(key, None)
+            return value
+        except Exception:
+            pass
+    value = _memory_get(key)
+    _memory.pop(key, None)
+    return value
