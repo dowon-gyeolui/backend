@@ -33,6 +33,37 @@ from app.routers import (
 )
 
 
+# 저장소·문서·예제에 실려 있는 SECRET_KEY 값들. 공격자가 이미 알고 있다고 봐야 하며,
+# 이 값으로 서명하면 누구나 임의 사용자의 JWT 를 위조할 수 있다.
+_PLACEHOLDER_SECRET_KEYS = frozenset(
+    {
+        "dev-secret-key-change-in-production",
+        "change-this-to-a-random-secret",
+    }
+)
+
+_SECRET_KEY_HOWTO = "python -c \"import secrets; print(secrets.token_urlsafe(48))\" 로 생성해 SECRET_KEY 에 넣으세요."
+
+
+def assert_secret_key_configured() -> None:
+    """기동 시점에 SECRET_KEY 를 검증한다 — 통과 못 하면 서버가 뜨지 않는다.
+
+    DEBUG 와 독립적인 두 번째 방어선이다. 운영 환경변수를 한 줄 빠뜨렸을 때
+    "조용히 위조 가능한 상태로 뜨는" 대신 여기서 즉시 죽는 쪽이 낫다.
+    """
+    key = settings.secret_key.strip()
+    if not key:
+        raise RuntimeError(f"SECRET_KEY 가 비어 있어 기동할 수 없습니다. {_SECRET_KEY_HOWTO}")
+    if key in _PLACEHOLDER_SECRET_KEYS:
+        raise RuntimeError(
+            "SECRET_KEY 가 예제 플레이스홀더 값 그대로입니다 — 이 값으로는 누구나 "
+            f"토큰을 위조할 수 있어 기동을 중단합니다. {_SECRET_KEY_HOWTO}"
+        )
+
+
+assert_secret_key_configured()
+
+
 if settings.sentry_dsn:
     try:
         import sentry_sdk

@@ -42,6 +42,10 @@ router = APIRouter()
 
 _BIRTH_DATA_PATCH_DAILY_LIMIT = 5
 
+# 공개 프로필 조회 상한(1인 1일). 정상 사용은 카드가 열린 상대를 화면에서 여닫는
+# 정도라 이 근처에도 못 간다 — 대량 스크레이핑만 걸리는 값으로 잡았다.
+_PUBLIC_PROFILE_DAILY_LIMIT = 200
+
 
 @router.get("/me", response_model=UserProfileResponse)
 async def get_my_profile(current_user: User = Depends(get_current_user)):
@@ -128,6 +132,15 @@ async def get_public_profile(
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail="먼저 이 인연의 카드를 열람해주세요.",
+        )
+    # 언락 검사(T-H01) 뒤에 두는 두 번째 방어선. 검사가 다시 뚫려도 토큰 하나로
+    # id 를 순회하며 전 회원을 긁어가는 속도를 하루 이만큼으로 묶는다.
+    if not await check_daily_limit(
+        current_user.id, "public_profile_view", _PUBLIC_PROFILE_DAILY_LIMIT
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="프로필 조회가 너무 많아요. 잠시 후 다시 시도해주세요.",
         )
     target = await db.get(User, user_id)
     if target is None:

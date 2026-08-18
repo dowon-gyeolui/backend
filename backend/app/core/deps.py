@@ -61,9 +61,13 @@ async def get_current_user(
             )
         return user
 
-    if settings.debug:
-        dev_id = x_dev_user_id if x_dev_user_id is not None else 1
-        dev_kakao_id = f"dev_{dev_id}"
+    # 개발용 무인증 우회. 세 조건을 모두 만족해야 열린다.
+    #   - DEBUG, ALLOW_DEV_AUTH 둘 다 켜져 있을 것 (환경변수 하나를 빠뜨려도 안 열린다)
+    #   - X-Dev-User-Id 를 **명시적으로** 보냈을 것
+    # 예전에는 헤더가 없으면 조용히 user_id=1 로 계정을 만들어 줬다. 그래서 DEBUG 가
+    # 켜진 배포에서는 인증 헤더 없는 요청이 전부 200 이었다(strix HIGH, T-H06).
+    if settings.debug and settings.allow_dev_auth and x_dev_user_id is not None:
+        dev_kakao_id = f"dev_{x_dev_user_id}"
         result = await db.execute(select(User).where(User.kakao_id == dev_kakao_id))
         user = result.scalar_one_or_none()
         if user is None:

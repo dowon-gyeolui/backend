@@ -13,6 +13,7 @@ _TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 os.environ["DATABASE_URL"] = _TEST_DB_URL
 os.environ["SECRET_KEY"] = "test-secret-key-not-for-production"
 os.environ["DEBUG"] = "false"          # 테스트 기본값은 운영과 같게 둔다
+os.environ["ALLOW_DEV_AUTH"] = "false"   # 무인증 우회는 기본적으로 닫힌 상태로 검증한다
 os.environ["REDIS_URL"] = ""
 os.environ["SENTRY_DSN"] = ""
 os.environ["OPENAI_API_KEY"] = ""
@@ -53,6 +54,21 @@ def _assert_not_production():
     url = settings.database_url
     assert url.startswith("sqlite"), f"테스트는 SQLite 로만 돈다. 현재: {url!r}"
     assert "supabase" not in url and "postgres" not in url, f"운영 DB 의심: {url!r}"
+
+
+@pytest.fixture(autouse=True)
+def _clear_rate_limit_cache():
+    """레이트리밋 카운터를 테스트마다 비운다.
+
+    카운터는 프로세스 전역 메모리(`app.services.cache._memory`)에 쌓이는데
+    in-memory DB 는 테스트마다 새로 만들어져 `user.id` 가 1부터 다시 시작한다.
+    안 지우면 앞 테스트가 쓴 카운트를 다음 테스트가 그대로 물려받는다.
+    """
+    from app.services.cache import _memory
+
+    _memory.clear()
+    yield
+    _memory.clear()
 
 
 @pytest_asyncio.fixture

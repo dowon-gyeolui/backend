@@ -263,12 +263,16 @@ RAG 원전 코퍼스에 텍스트를 **삽입**할 수 있다.
 아는 사람이 그 기기로 **자기 알림이 가게** 만들 수 있다. 토큰은 추측 불가능한
 값이라 실현 가능성은 낮다. 기록만 해 둔다.
 
-#### F-5 (참고) — `DEBUG=true` 면 인증이 완전히 우회된다
+#### F-5 (해소, T-H06) — `DEBUG=true` 면 인증이 완전히 우회됐다
 
 `core/deps.get_current_user` 는 `settings.debug` 가 참이면 `X-Dev-User-Id` 헤더만으로
-임의 사용자가 된다. 이미 알려진 사항이고 `tests/test_isolation.py` 가 기본값을 고정하고
-있지만, **운영 `DEBUG` 확인은 여전히 미완**이다(NEEDS_HUMAN 최상단).
-롤 분리를 해도 이게 켜져 있으면 앱 레이어 격리는 통째로 무의미하다.
+임의 사용자가 됐고, 헤더가 없으면 조용히 `dev_1` 계정을 만들어 줬다. `DEBUG` 기본값이
+`true` 라 운영 환경변수를 빠뜨리면 인증이 통째로 열렸다(strix HIGH, CVSS 7.7).
+
+지금은 `DEBUG` 기본값이 `false` 고, 우회는 `ALLOW_DEV_AUTH` 까지 **함께** 켜고
+`X-Dev-User-Id` 를 **명시**해야만 열린다. 여기에 더해 `main.py` 가 기동 시
+`SECRET_KEY` 가 예제 플레이스홀더거나 비어 있으면 서버를 띄우지 않는다 —
+`DEBUG` 설정을 깜빡해도 남는 방어선이다. 고정: `tests/test_auth_hardening.py`.
 
 ---
 

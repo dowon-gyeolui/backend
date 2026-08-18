@@ -1,5 +1,5 @@
 """카카오 OAuth 로그인 시작 및 콜백 처리 엔드포인트."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +20,12 @@ from app.services.app_login_code import (
     issue_login_code,
     redeem_login_code,
 )
-from app.services.rate_limit import check_daily_limit
+from app.services.rate_limit import (
+    check_daily_limit,
+    client_ip,
+    daily_attempt_count,
+    record_daily_attempt,
+)
 from app.services.auth import (
     exchange_code_for_token,
     fetch_kakao_profile,
@@ -33,6 +38,14 @@ router = APIRouter()
 # 본인 확인 시도 상한(1인 1일). 비밀번호를 아는 사람이 하루에 이만큼 재확인할 일은 없고,
 # 탈취한 토큰으로 비밀번호를 캐내려는 시도는 여기서 막힌다.
 _REAUTH_DAILY_LIMIT = 30
+
+# 비밀번호 로그인 실패 상한(1일). **실패한 시도만 센다** — 정상 로그인은 아무리 자주
+# 해도 잠기지 않는다. 아이디 기준은 계정 하나를 노리는 브루트포스를, 출처 IP 기준은
+# 아이디 목록을 훑는 크리덴셜 스터핑을 막는다. IP 쪽 한도를 넉넉히 잡은 이유는
+# 국내 이동통신 CGNAT 뒤에서 여러 사용자가 같은 IP 로 보이기 때문이다.
+_LOGIN_FAIL_ACTION = "login_fail"
+_LOGIN_FAIL_DAILY_LIMIT_PER_USERNAME = 10
+_LOGIN_FAIL_DAILY_LIMIT_PER_IP = 100
 
 # 번들 앱은 https://localhost 에서 돌아가 백엔드가 리다이렉트로 되돌려줄 수 없다.
 # 대신 커스텀 스킴으로 되돌리면 OS 가 앱을 깨워 준다(Capacitor appUrlOpen).
@@ -109,8 +122,28 @@ async def exchange_app_login_code(data: AppLoginCodeExchange):
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """아이디/비밀번호 로그인 — 온보딩에서 설정한 자격으로 토큰을 발급한다."""
+async def login(
+    data: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """아이디/비밀번호 로그인 — 온보딩에서 설정한 자격으로 토큰을 발급한다.
+
+    상한을 **비밀번호 검증보다 먼저** 본다. 검증 뒤에 보면 비밀번호를 맞힌 순간
+    통과해 버려 브루트포스를 못 막는다.
+    """
+    ip = client_ip(request)
+    username_subject = f"username:{data.username}"
+    ip_subject = f"ip:{ip}"
+    if (
+        await daily_attempt_count(username_subject, _LOGIN_FAIL_ACTION)
+        >= _LOGIN_FAIL_DAILY_LIMIT_PER_USERNAME
+        or await daily_attempt_count(ip_subject, _LOGIN_FAIL_ACTION)
+        >= _LOGIN_FAIL_DAILY_LIMIT_PER_IP
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="로그인 시도가 너무 많아요. 잠시 후 다시 시도해주세요.",
+        )
+
     result = await db.execute(select(User).where(User.username == data.username))
     user = result.scalar_one_or_none()
     if (
@@ -118,6 +151,8 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
         or not user.password_hash
         or not verify_password(data.password, user.password_hash)
     ):
+        await record_daily_attempt(username_subject, _LOGIN_FAIL_ACTION)
+        await record_daily_attempt(ip_subject, _LOGIN_FAIL_ACTION)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="아이디 또는 비밀번호가 올바르지 않아요.",

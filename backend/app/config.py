@@ -58,7 +58,14 @@ class Settings(BaseSettings):
 
     frontend_urls: str = "http://localhost:3000"
 
-    debug: bool = True
+    # 기본값은 운영 기준이다. 켜려면 환경변수로 명시해야 한다 — 설정을 빠뜨렸을 때
+    # 열리는 쪽이 아니라 닫히는 쪽으로 실패해야 한다.
+    debug: bool = False
+
+    # 개발용 무인증 우회(X-Dev-User-Id, core/deps.py)를 여는 **별도** 스위치.
+    # debug 하나로는 열리지 않는다 — debug 는 진단 라우트 등 다른 용도로도 켜는 값이라
+    # 거기에 인증 우회까지 딸려 열리면 사고가 된다(strix HIGH, T-H06).
+    allow_dev_auth: bool = False
 
     # 푸시 등 기능 테스트용. true 면 매칭 후보에서 이성 필터를 걷어낸다.
     # 운영에서는 반드시 false 여야 한다.

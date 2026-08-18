@@ -10,8 +10,12 @@ from app.models.user import User
 from app.schemas.compatibility import CompatibilityReport
 from app.services import compatibility as compatibility_service
 from app.services import matching as matching_service
+from app.services.rate_limit import check_daily_limit
 
 router = APIRouter()
+
+# 궁합 리포트 조회 상한(1인 1일). 정상 사용은 채팅 헤더 드로우를 여닫는 정도다.
+_REPORT_DAILY_LIMIT = 200
 
 
 def _require_birth_data(user: User, *, is_self: bool) -> None:
@@ -48,6 +52,14 @@ async def get_compatibility_report(
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail="먼저 이 인연의 카드를 열람해주세요.",
+        )
+    # 언락 검사(T-H01) 뒤에 두는 두 번째 방어선 — users.py 의 공개 프로필과 같은 이유.
+    if not await check_daily_limit(
+        current_user.id, "compatibility_report_view", _REPORT_DAILY_LIMIT
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="리포트 조회가 너무 많아요. 잠시 후 다시 시도해주세요.",
         )
     _require_birth_data(current_user, is_self=True)
 
