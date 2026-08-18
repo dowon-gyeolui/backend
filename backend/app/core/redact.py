@@ -78,3 +78,44 @@ def redact_secrets(text: str) -> str:
     for value in sorted(_secret_values(), key=len, reverse=True):
         out = out.replace(value, MASK)
     return _URL_CREDENTIALS_RE.sub(rf"\1:{MASK}@", out)
+
+
+def _redact_args(args):
+    """`logger.info("%s", value)` 의 인자 중 문자열만 마스킹한다."""
+    if isinstance(args, tuple):
+        return tuple(redact_secrets(a) if isinstance(a, str) else a for a in args)
+    if isinstance(args, dict):
+        return {k: redact_secrets(v) if isinstance(v, str) else v for k, v in args.items()}
+    return args
+
+
+def install_log_redaction() -> None:
+    """모든 `logging` 레코드(메시지·인자·트레이스백)를 마스킹한다.
+
+    `logger.exception()` 은 외부 SDK 예외의 **트레이스백 원문**까지 찍는다. 호출부에서
+    메시지만 마스킹하면 마지막 줄에 원문이 그대로 남아 반쪽짜리 방어가 된다.
+    레코드 팩토리에서 트레이스백을 미리 렌더링해 `exc_text` 에 넣어두면
+    `logging.Formatter` 가 그 값을 그대로 재사용하므로 원문이 다시 만들어지지 않는다.
+
+    앱 기동 시 한 번 호출한다(`app/main.py`). 두 번 호출해도 중첩되지 않는다.
+    """
+    import logging
+    import traceback
+
+    factory = logging.getLogRecordFactory()
+    if getattr(factory, "_melobe_redacting", False):
+        return
+
+    def redacting_factory(*args, **kwargs):
+        record = factory(*args, **kwargs)
+        if isinstance(record.msg, str):
+            record.msg = redact_secrets(record.msg)
+        record.args = _redact_args(record.args)
+        if record.exc_info and record.exc_info[0] is not None:
+            record.exc_text = redact_secrets(
+                "".join(traceback.format_exception(*record.exc_info))
+            )
+        return record
+
+    redacting_factory._melobe_redacting = True
+    logging.setLogRecordFactory(redacting_factory)

@@ -15,7 +15,7 @@ from app.core.deps import (
     REAUTH_REQUIRED_HEADER,
     REFRESHED_TOKEN_HEADER,
 )
-from app.core.redact import redact_url_credentials
+from app.core.redact import install_log_redaction, redact_secrets, redact_url_credentials
 from app.core.request_context import CurrentUserContextMiddleware
 from app.database import AsyncSessionLocal
 from app.routers import (
@@ -63,19 +63,33 @@ def assert_secret_key_configured() -> None:
 
 assert_secret_key_configured()
 
+# 로그로 나가는 모든 문자열을 마스킹한다. Sentry 초기화보다 먼저 걸어야
+# Sentry 가 가져가는 레코드도 마스킹된 상태가 된다.
+install_log_redaction()
+
 
 if settings.sentry_dsn:
     try:
         import sentry_sdk
         from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.logging import LoggingIntegration
 
         sentry_sdk.init(
             dsn=settings.sentry_dsn,
-            integrations=[FastApiIntegration()],
+            integrations=[
+                FastApiIntegration(),
+                # 기본값이면 ERROR 로그가 자동으로 Sentry(제3자 SaaS)로 나간다.
+                # 외부 SDK 예외 원문이 섞일 수 있어 로그 → 이벤트/브레드크럼 수집을
+                # 모두 끈다. 요청 처리 중 터진 예외는 FastApiIntegration 이 잡는다.
+                LoggingIntegration(level=None, event_level=None),
+            ],
             traces_sample_rate=0.1,
         )
     except Exception as exc:
-        print(f"[startup] Sentry 초기화 실패 — 무시하고 계속: {exc!r}", flush=True)
+        print(
+            f"[startup] Sentry 초기화 실패 — 무시하고 계속: {redact_secrets(repr(exc))}",
+            flush=True,
+        )
 
 
 _AUDIO_PURGE_INTERVAL_S = 3600

@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.redact import redact_secrets
 from app.models.device_token import DeviceToken
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -59,7 +60,10 @@ def _init_firebase():
 
         _firebase_app = firebase_admin.initialize_app(cred)
     except Exception as exc:
-        print(f"[push] Firebase 초기화 실패 — 푸시 비활성화: {exc!r}", flush=True)
+        print(
+            f"[push] Firebase 초기화 실패 — 푸시 비활성화: {redact_secrets(repr(exc))}",
+            flush=True,
+        )
         _firebase_app = None
     return _firebase_app
 
@@ -110,9 +114,15 @@ async def send_push_to_user(
                     app=app,
                 )
             except Exception as exc:
-                print(f"[push] 발송 실패 user_id={user_id}: {exc!r}", flush=True)
+                print(
+                    f"[push] 발송 실패 user_id={user_id}: {redact_secrets(repr(exc))}",
+                    flush=True,
+                )
     except Exception as exc:
-        print(f"[push] send_push_to_user 실패 user_id={user_id}: {exc!r}", flush=True)
+        print(
+            f"[push] send_push_to_user 실패 user_id={user_id}: {redact_secrets(repr(exc))}",
+            flush=True,
+        )
 
 
 async def send_daily_match_push(db: AsyncSession) -> int:

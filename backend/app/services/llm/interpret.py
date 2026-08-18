@@ -9,7 +9,9 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Optional
 
+from app.core.redact import redact_secrets
 from app.schemas.saju import SajuResponse
+from app.services.llm.prompt_safety import sanitize_prompt_name
 
 _MODEL = os.environ.get("OPENAI_INTERPRET_MODEL", "gpt-5.4-nano")
 _MAX_OUTPUT_TOKENS = 400
@@ -173,8 +175,8 @@ def _build_pair_message(
     user_b_info: dict,
     passages: list[RetrievedPassage],
 ) -> str:
-    nick_a = user_a_info.get("nickname") or "사용자A"
-    nick_b = user_b_info.get("nickname") or "사용자B"
+    nick_a = sanitize_prompt_name(user_a_info.get("nickname"), "사용자A")
+    nick_b = sanitize_prompt_name(user_b_info.get("nickname"), "사용자B")
     lines = [
         "[궁합 분석 입력]",
         f"- 궁합 점수: {score} / 100",
@@ -331,7 +333,7 @@ def generate_detailed_interpretation(
             text = _extract_output_text(resp)
             parsed = _parse_pair_json(text)
         except Exception as exc:
-            print(f"[llm] detailed 호출 실패: {exc!r}", flush=True)
+            print(f"[llm] detailed 호출 실패: {redact_secrets(repr(exc))}", flush=True)
             continue
         if parsed is None:
             continue
@@ -715,12 +717,13 @@ def generate_daily_text(
     prompt = _DAILY_PROMPTS.get(kind)
     if prompt is None:
         return None
+    safe_nickname = sanitize_prompt_name(nickname, "고객")
     try:
         resp = _client().responses.create(
             model=model,
             instructions=prompt,
             input=(
-                f"[{nickname}님의 오늘 신호]\n{signal_text}\n\n"
+                f"[{safe_nickname}님의 오늘 신호]\n{signal_text}\n\n"
                 "위 신호만 근거로 오늘의 문구를 작성하십시오."
             ),
             max_output_tokens=_MAX_OUTPUT_TOKENS,
@@ -767,8 +770,8 @@ def generate_compatibility_report(
     user_b_info: dict,
     model: str = _MODEL,
 ) -> Optional[dict[str, Any]]:
-    nick_a = user_a_info.get("nickname") or "사용자A"
-    nick_b = user_b_info.get("nickname") or "사용자B"
+    nick_a = sanitize_prompt_name(user_a_info.get("nickname"), "사용자A")
+    nick_b = sanitize_prompt_name(user_b_info.get("nickname"), "사용자B")
     user_input = "\n".join([
         "[궁합 입력]",
         f"- 궁합 점수: {score} / 100",
