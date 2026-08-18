@@ -5,15 +5,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.deps import get_current_user
 from app.core.security import create_access_token, verify_password
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import AppLoginCodeExchange, LoginRequest, LoginResponse
+from app.schemas.user import (
+    AppLoginCodeExchange,
+    LoginRequest,
+    LoginResponse,
+    ReauthRequest,
+)
 from app.services.app_login_code import (
     CODE_CHALLENGE_RE,
     issue_login_code,
     redeem_login_code,
 )
+from app.services.rate_limit import check_daily_limit
 from app.services.auth import (
     exchange_code_for_token,
     fetch_kakao_profile,
@@ -22,6 +29,10 @@ from app.services.auth import (
 )
 
 router = APIRouter()
+
+# 본인 확인 시도 상한(1인 1일). 비밀번호를 아는 사람이 하루에 이만큼 재확인할 일은 없고,
+# 탈취한 토큰으로 비밀번호를 캐내려는 시도는 여기서 막힌다.
+_REAUTH_DAILY_LIMIT = 30
 
 # 번들 앱은 https://localhost 에서 돌아가 백엔드가 리다이렉트로 되돌려줄 수 없다.
 # 대신 커스텀 스킴으로 되돌리면 OS 가 앱을 깨워 준다(Capacitor appUrlOpen).
@@ -115,3 +126,32 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
         token=create_access_token(user.id),
         is_new=user.birth_date is None,
     )
+
+
+@router.post("/reauth", response_model=LoginResponse)
+async def reauth(data: ReauthRequest, current_user: User = Depends(get_current_user)):
+    """민감 액션 앞의 비밀번호 재확인 — 통과하면 인증 시각이 지금인 새 토큰을 준다.
+
+    카카오로만 가입해 비밀번호가 없는 계정은 카카오 재로그인이 재인증 경로다.
+    비밀번호 불일치를 401 이 아니라 400 으로 돌려주는 이유: 401 이면 클라이언트가
+    로그인이 풀린 줄 알고 토큰을 버린다. 세션은 멀쩡하고 확인만 실패한 것이다.
+    """
+    if not current_user.password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="비밀번호가 설정되어 있지 않아요. 카카오로 다시 로그인해주세요.",
+        )
+
+    if not await check_daily_limit(current_user.id, "reauth", _REAUTH_DAILY_LIMIT):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="본인 확인 시도가 너무 많아요. 잠시 후 다시 시도해주세요.",
+        )
+
+    if not verify_password(data.password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="비밀번호가 올바르지 않아요.",
+        )
+
+    return LoginResponse(token=create_access_token(current_user.id), is_new=False)

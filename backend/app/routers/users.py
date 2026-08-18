@@ -1,13 +1,13 @@
 """사용자 프로필/사진/인터뷰 답변/생년월일/계정 삭제 엔드포인트."""
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core.deps import get_current_user
+from app.core.deps import assert_recent_auth, get_current_user, require_recent_auth
 from app.core.redact import redact_secrets
 from app.core.security import hash_password
 from app.database import get_db
@@ -50,9 +50,15 @@ async def get_my_profile(current_user: User = Depends(get_current_user)):
 @router.post("/me/credentials", response_model=CredentialsResponse)
 async def set_credentials(
     data: CredentialsCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # 이미 비밀번호가 있는 계정의 자격증명 "변경"은 민감 액션이라 최근 인증을 요구한다.
+    # 온보딩에서의 최초 설정은 그대로 열어 둔다 — 아직 확인할 비밀번호 자체가 없다.
+    if current_user.password_hash:
+        assert_recent_auth(request)
+
     existing = await db.execute(
         select(User.id).where(
             User.username == data.username, User.id != current_user.id
@@ -437,7 +443,8 @@ async def upgrade_demo(
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_my_account(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_recent_auth),
 ):
+    # 되돌릴 수 없는 액션이다(OI-MEM-001: 탈퇴 복구 금지). 최근 인증을 요구한다.
     await users_service.delete_account(current_user, db)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

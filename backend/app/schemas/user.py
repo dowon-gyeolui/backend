@@ -51,6 +51,12 @@ class LoginResponse(BaseModel):
     is_new: bool
 
 
+class ReauthRequest(BaseModel):
+    """민감 액션 앞의 비밀번호 재확인. 로그인과 달리 아이디는 이미 정해져 있다."""
+
+    password: str
+
+
 class AppLoginCodeExchange(BaseModel):
     """네이티브 앱이 딥링크로 받은 1회용 코드를 토큰으로 바꿀 때 보내는 값."""
 

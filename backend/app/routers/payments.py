@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_recent_auth
 from app.database import get_db
 from app.models.star_ledger import ENTRY_TEST_TOPUP
 from app.models.user import User
@@ -41,9 +41,14 @@ async def create_order(
 async def confirm_payment(
     body: ConfirmRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_recent_auth),
 ):
-    """토스 결제 성공 리다이렉트 후 최종 승인 + 스타 적립. 멱등."""
+    """토스 결제 성공 리다이렉트 후 최종 승인 + 스타 적립. 멱등.
+
+    돈이 나가는 지점이라 최근 인증을 요구한다(OI-AUTH-002). 재인증 없이 막히면 주문은
+    PENDING 으로 남고 토스에서도 승인되지 않는다 — `/payments/reconcile` 이 나중에
+    실패로 닫으므로 결제만 안 될 뿐 돈이 붕 뜨지는 않는다.
+    """
     await payments_service.confirm_payment(
         current_user, body.payment_key, body.order_id, body.amount, db
     )

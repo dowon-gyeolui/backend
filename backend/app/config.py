@@ -34,7 +34,12 @@ class Settings(BaseSettings):
     kakao_admin_key: str = ""
 
     secret_key: str = "dev-secret-key-change-in-production"
+    # 세션 절대 상한 — 재로그인 없이 세션이 이어질 수 있는 최대 기간.
     access_token_expire_minutes: int = 60 * 24 * 7
+    # 유휴 만료 — 마지막 활동 이후 이만큼 지나면 토큰이 죽는다 (OI-AUTH-002: 2시간).
+    idle_timeout_minutes: int = 120
+    # 민감 액션(탈퇴·결제 승인·자격증명 변경)에 요구하는 "최근 인증" 유효 시간.
+    reauth_window_minutes: int = 10
 
     toss_secret_key: str = ""
 

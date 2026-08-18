@@ -11,6 +11,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from app.config import settings
+from app.core.deps import (
+    REAUTH_REQUIRED_HEADER,
+    REFRESHED_TOKEN_HEADER,
+)
 from app.core.redact import redact_url_credentials
 from app.core.request_context import CurrentUserContextMiddleware
 from app.database import AsyncSessionLocal
@@ -127,6 +131,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # 브라우저·WebView 는 노출을 허락한 응답 헤더만 JS 에 넘긴다. 갱신 토큰과
+    # 재인증 요구 표식은 클라이언트가 반드시 읽어야 한다(core/deps.py).
+    expose_headers=[REAUTH_REQUIRED_HEADER, REFRESHED_TOKEN_HEADER],
 )
 
 _DB_BUSY_RETRY_AFTER_S = 5
