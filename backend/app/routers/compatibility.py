@@ -44,6 +44,11 @@ async def get_compatibility_report(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="차단된 상대와의 리포트는 제공하지 않습니다.",
         )
+    if not await matching_service.has_unlocked(current_user.id, peer_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="먼저 이 인연의 카드를 열람해주세요.",
+        )
     _require_birth_data(current_user, is_self=True)
 
     target = await db.get(User, peer_id)

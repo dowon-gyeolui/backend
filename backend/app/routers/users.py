@@ -118,6 +118,11 @@ async def get_public_profile(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="차단된 상대의 프로필은 볼 수 없어요.",
         )
+    if not await matching_service.has_unlocked(current_user.id, user_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="먼저 이 인연의 카드를 열람해주세요.",
+        )
     target = await db.get(User, user_id)
     if target is None:
         raise HTTPException(
