@@ -32,6 +32,13 @@ from app.database import Base
 ENTRY_PURCHASE = "purchase"        # 결제 승인에 따른 충전. reference_id = 주문번호
 ENTRY_CARD_UNLOCK = "card_unlock"  # 추가 인연 카드 열람 차감. reference_id = "<사용자>:<후보>"
 ENTRY_TEST_TOPUP = "test_topup"    # 개발용 무료 충전(운영에서는 라우트 자체가 404)
+ENTRY_ADMIN_GRANT = "admin_grant"   # 운영 보상 지급. reference_id = 관리자 앱이 만든 요청 id
+ENTRY_ADMIN_REVOKE = "admin_revoke"  # 운영 회수. reference_id = 관리자 앱이 만든 요청 id
+
+# 운영 조정(ADM-WALLET-001)의 멱등키는 **요청 id** 다. 주문번호처럼 밖에서 주어지는 값이
+# 없어서, 관리자 앱이 폼을 열 때 만든 id 를 그대로 reference_id 로 쓴다. 버튼을 연타해도
+# 같은 id 가 가므로 Unique 제약이 두 번째부터를 걸러낸다(완료 조건: 중복 지급 방지).
+ADMIN_ENTRY_TYPES = (ENTRY_ADMIN_GRANT, ENTRY_ADMIN_REVOKE)
 
 
 def _utcnow() -> datetime:
