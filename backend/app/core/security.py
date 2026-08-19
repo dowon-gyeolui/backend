@@ -8,6 +8,10 @@
 
 `auth_time` 은 갱신해도 바뀌지 않는다. "마지막으로 직접 인증한 시각"이라, 민감 액션의
 재인증 판정(`core/deps.py` 의 `assert_recent_auth`)이 이 값을 본다.
+
+`scope` 는 토큰이 어느 세계의 것인지를 못 박는다. 앱 사용자와 관리자는 테이블이
+분리되어 있어(DECISIONS D-4) id 공간이 겹친다 — scope 가 없으면 `sub=1` 짜리 관리자
+토큰이 `users.id=1` 사용자로 통해 버린다. 두 인증 의존성은 각자 자기 scope 만 받는다.
 """
 
 from dataclasses import dataclass
@@ -20,14 +24,21 @@ from app.config import settings
 
 ALGORITHM = "HS256"
 
+SCOPE_USER = "user"
+SCOPE_ADMIN = "admin"
+
 
 @dataclass(frozen=True)
 class TokenClaims:
+    # 토큰 주체의 id. `scope` 에 따라 `users.id` 또는 `admin_users.id` 다.
     user_id: int
     # 이 세션이 처음 인증(로그인)된 시각. 토큰을 갱신해도 그대로 이어진다.
     auth_time: datetime
     # 이 토큰이 발급된 시각. 슬라이딩 갱신 주기를 재는 기준.
     issued_at: datetime
+    # scope 클레임이 없는 토큰은 이 변경 이전에 나간 앱 사용자 토큰이다.
+    # 관리자 토큰은 반드시 명시된 scope 를 갖도록 아래에서 항상 실어 보낸다.
+    scope: str = SCOPE_USER
 
     @property
     def session_expires_at(self) -> datetime:
@@ -42,22 +53,32 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
-def create_access_token(user_id: int, auth_time: datetime | None = None) -> str:
-    """토큰을 발급한다. `auth_time` 을 주면 기존 세션을 그대로 이어받는다(갱신).
-
-    로그인 경로는 `auth_time` 없이 부른다 — 지금이 곧 인증 시각이다.
-    """
+def _create_token(subject_id: int, scope: str, auth_time: datetime | None) -> str:
     now = datetime.now(timezone.utc)
     auth_time = auth_time or now
     session_end = auth_time + timedelta(minutes=settings.access_token_expire_minutes)
     expire = min(now + timedelta(minutes=settings.idle_timeout_minutes), session_end)
     payload = {
-        "sub": str(user_id),
+        "sub": str(subject_id),
         "exp": expire,
         "iat": now,
         "auth_time": int(auth_time.timestamp()),
+        "scope": scope,
     }
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def create_access_token(user_id: int, auth_time: datetime | None = None) -> str:
+    """앱 사용자 토큰을 발급한다. `auth_time` 을 주면 기존 세션을 이어받는다(갱신).
+
+    로그인 경로는 `auth_time` 없이 부른다 — 지금이 곧 인증 시각이다.
+    """
+    return _create_token(user_id, SCOPE_USER, auth_time)
+
+
+def create_admin_access_token(admin_id: int, auth_time: datetime | None = None) -> str:
+    """관리자 토큰을 발급한다. 앱 사용자 인증(`core/deps.py`)은 이 토큰을 거부한다."""
+    return _create_token(admin_id, SCOPE_ADMIN, auth_time)
 
 
 def _epoch_to_dt(value: object) -> datetime | None:
@@ -90,10 +111,12 @@ def decode_token_claims(token: str) -> TokenClaims | None:
             return None
         issued_at = exp - timedelta(minutes=settings.access_token_expire_minutes)
 
+    scope = payload.get("scope")
     return TokenClaims(
         user_id=user_id,
         auth_time=_epoch_to_dt(payload.get("auth_time")) or issued_at,
         issued_at=issued_at,
+        scope=scope if isinstance(scope, str) else SCOPE_USER,
     )
 
 

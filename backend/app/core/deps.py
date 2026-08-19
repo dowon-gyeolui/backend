@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.request_context import current_user_id
-from app.core.security import create_access_token, decode_token_claims
+from app.core.security import SCOPE_USER, create_access_token, decode_token_claims
 from app.database import get_db
 from app.models.user import User
 
@@ -32,7 +32,9 @@ async def get_current_user(
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1].strip()
         claims = decode_token_claims(token)
-        if claims is None:
+        if claims is None or claims.scope != SCOPE_USER:
+            # 관리자 토큰(`scope="admin"`)은 여기서 끊는다. 두 테이블의 id 공간이 겹쳐
+            # 그대로 통과시키면 관리자 id 와 같은 번호의 사용자로 로그인된다.
             raise HTTPException(status_code=401, detail="유효하지 않거나 만료된 토큰입니다.")
 
         now = datetime.now(timezone.utc)

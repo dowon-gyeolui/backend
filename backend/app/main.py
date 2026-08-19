@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from app.config import settings
+from app.core.admin_deps import PASSWORD_CHANGE_REQUIRED_HEADER
 from app.core.deps import (
     REAUTH_REQUIRED_HEADER,
     REFRESHED_TOKEN_HEADER,
@@ -19,6 +20,12 @@ from app.core.redact import install_log_redaction, redact_secrets, redact_url_cr
 from app.core.request_context import CurrentUserContextMiddleware
 from app.database import AsyncSessionLocal
 from app.routers import (
+    admin,
+    admin_audit,
+    admin_matching,
+    admin_members,
+    admin_payments,
+    admin_wallet,
     auth,
     chat,
     compatibility,
@@ -178,7 +185,12 @@ app.add_middleware(
     allow_headers=["*"],
     # 브라우저·WebView 는 노출을 허락한 응답 헤더만 JS 에 넘긴다. 갱신 토큰과
     # 재인증 요구 표식은 클라이언트가 반드시 읽어야 한다(core/deps.py).
-    expose_headers=[REAUTH_REQUIRED_HEADER, REFRESHED_TOKEN_HEADER],
+    expose_headers=[
+        REAUTH_REQUIRED_HEADER,
+        REFRESHED_TOKEN_HEADER,
+        # 관리자 앱이 "부트스트랩 비밀번호를 아직 안 바꿨다"를 읽는 표식.
+        PASSWORD_CHANGE_REQUIRED_HEADER,
+    ],
 )
 
 _DB_BUSY_RETRY_AFTER_S = 5
@@ -211,6 +223,22 @@ app.include_router(reports.router, prefix="/reports", tags=["reports"])
 app.include_router(payments.router, prefix="/payments", tags=["payments"])
 app.include_router(matching.router, prefix="/matches", tags=["matches"])
 app.include_router(stats.router, prefix="/stats", tags=["stats"])
+app.include_router(admin.router, prefix="/admin", tags=["admin"])
+app.include_router(
+    admin_members.router, prefix="/admin/members", tags=["admin-members"]
+)
+app.include_router(
+    admin_matching.router, prefix="/admin/matching", tags=["admin-matching"]
+)
+app.include_router(
+    admin_payments.router, prefix="/admin/payments", tags=["admin-payments"]
+)
+app.include_router(
+    admin_wallet.router, prefix="/admin/wallet", tags=["admin-wallet"]
+)
+app.include_router(
+    admin_audit.router, prefix="/admin/audit", tags=["admin-audit"]
+)
 
 
 @app.get("/health", tags=["system"])
