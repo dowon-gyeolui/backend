@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.block import UserBlock
-from app.models.user import User
+from app.models.user import STATUS_ACTIVE, User
 from app.schemas.compatibility import (
     CompatibilityReport,
     CompatibilityScore,
@@ -453,6 +453,11 @@ async def _candidate_pool(
         .where(User.photo_url.is_not(None))
         .where(User.id.not_in(blocked_by_me))
         .where(User.id.not_in(blocked_me))
+        # 운영이 내린 회원은 후보가 되지 않는다(OI-MATCH-001 하드필터의 "계정 정지").
+        # 관리자 화면(T-E03)의 상태 변경·프로필 노출 중단이 실제로 효력을 갖는 지점이
+        # 여기다 — 여기서 거르지 않으면 관리자 버튼은 표시만 바꾸는 장식이 된다.
+        .where(User.status == STATUS_ACTIVE)
+        .where(User.profile_hidden.is_(False))
     )
     if not settings.allow_same_gender_match:
         if current_user.gender == "male":

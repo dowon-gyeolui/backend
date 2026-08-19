@@ -9,6 +9,7 @@ from datetime import date
 import pytest
 
 from app.models.block import UserBlock
+from app.models.user import STATUS_BLOCKED, STATUS_INACTIVE
 from app.services.compatibility import _candidate_pool
 
 
@@ -63,6 +64,20 @@ async def test_incomplete_profile_is_excluded(db, make_user):
     assert no_birth.id not in ids
     assert no_photo.id not in ids
     assert ok.id in ids
+
+
+@pytest.mark.asyncio
+async def test_suspended_or_hidden_members_are_excluded(db, make_user):
+    """운영이 내린 회원은 후보가 되지 않는다 (OI-MATCH-001 의 "계정 정지", T-E03)."""
+    me = await make_user(kakao_id="me", gender="male")
+    inactive = await make_user(kakao_id="ina", gender="female", status=STATUS_INACTIVE)
+    blocked = await make_user(kakao_id="blk", gender="female", status=STATUS_BLOCKED)
+    hidden = await make_user(kakao_id="hid", gender="female", profile_hidden=True)
+    ok = await make_user(kakao_id="ok", gender="female")
+
+    ids = [c.id for c in await _candidate_pool(me, db)]
+    assert ids == [ok.id]
+    assert inactive.id not in ids and blocked.id not in ids and hidden.id not in ids
 
 
 @pytest.mark.asyncio
