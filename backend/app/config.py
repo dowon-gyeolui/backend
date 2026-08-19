@@ -77,6 +77,15 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        return [u.strip() for u in self.frontend_urls.split(",") if u.strip()]
+        # Capacitor 네이티브 앱은 웹 자산을 번들해 로컬에서 로드하므로, 요청 Origin 이
+        # 배포된 프론트엔드 도메인이 아니라 WebView 기본 origin 으로 온다
+        # (Android https://localhost, iOS capacitor://localhost). frontend_urls 는
+        # 배포 도메인만 담는 환경변수라 여기 없으면 앱의 /auth/app/exchange 호출이
+        # CORS 로 막혀 로그인 코드 교환이 조용히 실패한다.
+        origins = [u.strip() for u in self.frontend_urls.split(",") if u.strip()]
+        for native_origin in ("https://localhost", "capacitor://localhost"):
+            if native_origin not in origins:
+                origins.append(native_origin)
+        return origins
 
 settings = Settings()
