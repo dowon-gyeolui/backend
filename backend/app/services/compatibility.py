@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -437,6 +437,41 @@ def _build_card_for(
     return card
 
 
+def candidate_intrinsic_condition() -> ColumnElement[bool]:
+    """상대가 누구인지와 무관한, 후보 자신에 대한 하드필터.
+
+    운영이 내린 회원은 후보가 되지 않는다(OI-MATCH-001 하드필터의 "계정 정지").
+    관리자 화면(T-E03)의 상태 변경·프로필 노출 중단이 실제로 효력을 갖는 지점이
+    여기다 — 여기서 거르지 않으면 관리자 버튼은 표시만 바꾸는 장식이 된다.
+
+    조건을 함수로 꺼내 둔 것은 관리자 후보 검증 화면(T-E04)이 **같은 조건을 다시
+    적어 내려가지 않게** 하기 위해서다. 검증 화면이 조건을 따로 들고 있으면
+    "엔진은 거르는데 화면은 통과라고 말하는" 상태가 소리 없이 생긴다.
+    """
+    return and_(
+        User.birth_date.is_not(None),
+        User.photo_url.is_not(None),
+        User.status == STATUS_ACTIVE,
+        User.profile_hidden.is_(False),
+    )
+
+
+def allowed_candidate_genders(viewer_gender: Optional[str]) -> Optional[tuple[str, ...]]:
+    """이 회원의 후보가 될 수 있는 성별. `None` 이면 성별로 거르지 않는다.
+
+    성별이 없는 회원에게 `None` 을 돌려주는 것은 편의가 아니라 현재 엔진의 동작
+    그대로다 — 이성 필터가 성립하지 않아 모든 성별이 후보가 된다. 관리자 화면은
+    이것을 대상자 쪽 문제로 표시한다.
+    """
+    if settings.allow_same_gender_match:
+        return None
+    if viewer_gender == "male":
+        return ("female",)
+    if viewer_gender == "female":
+        return ("male",)
+    return None
+
+
 async def _candidate_pool(
     current_user: User, db: AsyncSession,
 ) -> list[User]:
@@ -449,19 +484,11 @@ async def _candidate_pool(
     stmt = (
         select(User)
         .where(User.id != current_user.id)
-        .where(User.birth_date.is_not(None))
-        .where(User.photo_url.is_not(None))
+        .where(candidate_intrinsic_condition())
         .where(User.id.not_in(blocked_by_me))
         .where(User.id.not_in(blocked_me))
-        # 운영이 내린 회원은 후보가 되지 않는다(OI-MATCH-001 하드필터의 "계정 정지").
-        # 관리자 화면(T-E03)의 상태 변경·프로필 노출 중단이 실제로 효력을 갖는 지점이
-        # 여기다 — 여기서 거르지 않으면 관리자 버튼은 표시만 바꾸는 장식이 된다.
-        .where(User.status == STATUS_ACTIVE)
-        .where(User.profile_hidden.is_(False))
     )
-    if not settings.allow_same_gender_match:
-        if current_user.gender == "male":
-            stmt = stmt.where(User.gender == "female")
-        elif current_user.gender == "female":
-            stmt = stmt.where(User.gender == "male")
+    genders = allowed_candidate_genders(current_user.gender)
+    if genders is not None:
+        stmt = stmt.where(User.gender.in_(genders))
     return list((await db.execute(stmt)).scalars().all())
