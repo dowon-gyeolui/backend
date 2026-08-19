@@ -27,6 +27,11 @@ from app.services.compatibility import (
 STAR_COST_PER_CARD = 10
 EXTRA_DAILY_LIMIT = 10
 
+# 원 조건에 맞는 상대가 없어 완화 동의가 필요할 때 추가 열람이 돌려주는 문구.
+RELAX_CONSENT_DETAIL = (
+    "조건에 맞는 사용자가 없어요. 조건을 완화하면 인연을 찾아드릴 수 있어요."
+)
+
 _HEIGHT_STEP = 5
 _HEIGHT_FLOOR = 140
 _AGE_STEP = 3
@@ -95,12 +100,20 @@ async def _unlocked_ids(user_id: int, db: AsyncSession) -> set[int]:
 
 
 async def _next_candidate(
-    user: User, exclude_ids: set[int], db: AsyncSession
-) -> User | None:
+    user: User, exclude_ids: set[int], db: AsyncSession, *, relax: bool
+) -> tuple[User | None, bool]:
+    """다음 후보와 "완화하면 후보가 생기는가"를 함께 돌려준다.
+
+    OI-MATCH-003 확정: 조건 위반 추천 금지. 그래서 `relax=False` 면 선호 조건
+    원본(완화 단계 0)만 본다 — 사용자가 동의하기 전에는 조건 밖 후보를 고르지 않는다.
+    두 번째 값이 True 면 화면이 "조건에 맞는 사용자 없음 + 완화 동의" 팝업을 띄운다.
+    """
     base = [c for c in await _candidate_pool(user, db) if c.id not in exclude_ids]
     if not base:
-        return None
-    for age_min, age_max, region, height_min in _relaxation_configs(user):
+        return None, False
+
+    configs = _relaxation_configs(user)
+    for age_min, age_max, region, height_min in configs if relax else configs[:1]:
         pool = [
             c
             for c in base
@@ -113,8 +126,12 @@ async def _next_candidate(
             )
         ]
         if pool:
-            return random.choice(pool)
-    return random.choice(base)
+            return random.choice(pool), False
+    if relax:
+        # 완화 단계를 다 밟고도 못 고르는 경우(마지막 단계가 조건을 전부 버리므로
+        # 사실상 base 가 남아 있을 때뿐)까지 동의 범위 안이다.
+        return random.choice(base), False
+    return None, True
 
 
 async def _reveal(user: User, candidate: User, db: AsyncSession) -> MatchCandidate:
@@ -191,28 +208,45 @@ async def _daily_today(user_id: int, db: AsyncSession) -> CardUnlock | None:
     return row.scalar_one_or_none()
 
 
-async def get_today_card(user: User, db: AsyncSession) -> MatchCandidate | None:
+async def get_today_card(
+    user: User, db: AsyncSession, *, relax: bool = False
+) -> tuple[MatchCandidate | None, bool]:
+    """(오늘의 카드, 완화 동의를 물어야 하는가). `relax` 는 사용자가 동의한 경우에만 True."""
     existing = await _daily_today(user.id, db)
     if existing is not None:
         candidate = await db.get(User, existing.candidate_id)
-        return await _reveal(user, candidate, db) if candidate else None
+        card = await _reveal(user, candidate, db) if candidate else None
+        return card, False
 
-    candidate = await _next_candidate(user, await _unlocked_ids(user.id, db), db)
+    candidate, relax_available = await _next_candidate(
+        user, await _unlocked_ids(user.id, db), db, relax=relax
+    )
     if candidate is None:
-        return None
+        return None, relax_available
     db.add(CardUnlock(user_id=user.id, candidate_id=candidate.id, kind=KIND_DAILY))
     await db.commit()
-    return await _reveal(user, candidate, db)
+    return await _reveal(user, candidate, db), False
 
 
-async def unlock_extra(user: User, db: AsyncSession) -> MatchCandidate:
+async def unlock_extra(
+    user: User, db: AsyncSession, *, relax: bool = False
+) -> MatchCandidate:
     if await count_extra_today(user.id, db) >= EXTRA_DAILY_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"오늘의 추가 열람 한도({EXTRA_DAILY_LIMIT}장)를 모두 사용했어요.",
         )
 
-    candidate = await _next_candidate(user, await _unlocked_ids(user.id, db), db)
+    candidate, relax_available = await _next_candidate(
+        user, await _unlocked_ids(user.id, db), db, relax=relax
+    )
+    if relax_available:
+        # 조건을 벗어난 카드를 팔지 않는다. 별은 아직 차감되지 않았다 — 화면이 완화
+        # 동의를 받고 relax=true 로 다시 부른다(OI-MATCH-003).
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=RELAX_CONSENT_DETAIL,
+        )
     if candidate is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
