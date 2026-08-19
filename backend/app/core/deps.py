@@ -11,6 +11,7 @@ from app.core.request_context import current_user_id
 from app.core.security import SCOPE_USER, create_access_token, decode_token_claims
 from app.database import get_db
 from app.models.user import User
+from app.services.account_status import assert_usable
 
 # 갱신 토큰을 실어 보내는 응답 헤더. 클라이언트는 이 값이 오면 저장 중인 토큰을 갈아끼운다.
 REFRESHED_TOKEN_HEADER = "X-Refreshed-Token"
@@ -50,6 +51,11 @@ async def get_current_user(
         if user is None:
             raise HTTPException(status_code=401, detail="유저를 찾을 수 없습니다.")
 
+        # 운영이 내린 회원(비활성·차단)은 여기서 끊는다. 이미 발급된 토큰은 최대 7일
+        # 살아 있으므로, 발급 시점만 막으면 정지 처분이 그만큼 늦게 걸린다. (T-E10)
+        # 아래 슬라이딩 갱신보다 먼저 둔다 — 막힌 계정에 새 토큰을 쥐어 줄 이유가 없다.
+        assert_usable(user)
+
         # 민감 액션 재인증 판정(assert_recent_auth)이 읽는다.
         request.state.auth_time = claims.auth_time
 
@@ -77,6 +83,7 @@ async def get_current_user(
             db.add(user)
             await db.commit()
             await db.refresh(user)
+        assert_usable(user)
         current_user_id.set(user.id)
         return user
 

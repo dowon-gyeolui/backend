@@ -8,6 +8,7 @@ from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.compatibility import CompatibilityReport
+from app.services import account_status
 from app.services import compatibility as compatibility_service
 from app.services import matching as matching_service
 from app.services.rate_limit import check_daily_limit
@@ -69,6 +70,9 @@ async def get_compatibility_report(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"user_id={peer_id} 를 찾을 수 없습니다.",
         )
+    # 정지된 회원의 리포트는 만들지 않는다 (T-E10). 노출 중단(profile_hidden)은 보지
+    # 않는다 — 그것은 프로필을 내린 것이지 이미 이어진 인연을 끊은 것이 아니다.
+    account_status.assert_peer_usable(target)
     _require_birth_data(target, is_self=False)
 
     return await asyncio.to_thread(

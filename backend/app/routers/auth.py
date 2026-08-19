@@ -15,6 +15,7 @@ from app.schemas.user import (
     LoginResponse,
     ReauthRequest,
 )
+from app.services.account_status import assert_usable
 from app.services.app_login_code import (
     CODE_CHALLENGE_RE,
     issue_login_code,
@@ -89,6 +90,9 @@ async def kakao_callback(
     access_token = await exchange_code_for_token(code)
     profile = await fetch_kakao_profile(access_token)
     user = await upsert_kakao_user(profile, db)
+    # 정지된 회원에게는 토큰도 1회용 코드도 내주지 않는다 (T-E10). 카카오 인증 자체는
+    # 이미 끝난 뒤라, 여기서 막지 않으면 카카오 로그인만으로 정지가 무력화된다.
+    assert_usable(user)
     is_new = user.birth_date is None
 
     # 앱: 딥링크에는 1회용 코드만 싣는다. 커스텀 스킴은 가로챌 수 있어 토큰을 실을 수 없다.
@@ -106,7 +110,9 @@ async def kakao_callback(
 
 
 @router.post("/app/exchange", response_model=LoginResponse)
-async def exchange_app_login_code(data: AppLoginCodeExchange):
+async def exchange_app_login_code(
+    data: AppLoginCodeExchange, db: AsyncSession = Depends(get_db)
+):
     """Step 3(앱 전용): 딥링크로 받은 1회용 코드를 실제 토큰으로 바꾼다.
 
     코드는 한 번만 통하고, 로그인을 시작한 앱만 아는 code_verifier 가 맞아야 한다.
@@ -118,6 +124,14 @@ async def exchange_app_login_code(data: AppLoginCodeExchange):
             detail="로그인 정보가 만료되었거나 올바르지 않아요. 다시 로그인해주세요.",
         )
     user_id, is_new = session
+    # 코드는 2분간 유효하다. 그 사이에 상태가 바뀔 수 있으니 발급 직전에 다시 본다.
+    user = await db.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="로그인 정보가 만료되었거나 올바르지 않아요. 다시 로그인해주세요.",
+        )
+    assert_usable(user)
     return LoginResponse(token=create_access_token(user_id), is_new=is_new)
 
 
@@ -157,6 +171,8 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="아이디 또는 비밀번호가 올바르지 않아요.",
         )
+    # 비밀번호 검증 뒤에 본다. 앞에 두면 아이디만으로 계정 상태를 캘 수 있다.
+    assert_usable(user)
     return LoginResponse(
         token=create_access_token(user.id),
         is_new=user.birth_date is None,

@@ -27,6 +27,7 @@ from app.schemas.user import (
     PublicProfileResponse,
     UserProfileResponse,
 )
+from app.services import account_status
 from app.services import matching as matching_service
 from app.services import photos as photos_service
 from app.services import users as users_service
@@ -148,6 +149,9 @@ async def get_public_profile(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"user_id={user_id} 를 찾을 수 없습니다.",
         )
+    # 운영이 내린 회원·프로필 노출을 중단한 회원은 이미 카드를 연 상대에게도 보이지
+    # 않는다 (T-E10). 매칭 후보 풀에서만 빼면 열람 이력이 있는 사람에게는 그대로 남는다.
+    account_status.assert_peer_profile_visible(target)
     return await users_service.build_public_profile(current_user, target, db)
 
 

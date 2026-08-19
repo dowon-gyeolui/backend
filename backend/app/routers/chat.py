@@ -29,6 +29,7 @@ from app.schemas.chat import (
     MessageCreate,
     MessageOut,
 )
+from app.services import account_status
 from app.services.chat_moderation import moderate_chat_message
 from app.services.matching import is_blocked
 from app.services.push import send_push_to_user
@@ -560,6 +561,7 @@ async def send_message_to_peer(
             detail=f"user_id={peer_id} not found",
         )
 
+    account_status.assert_peer_usable(target)
     await _require_not_blocked(current_user.id, peer_id, db)
     await _require_unlocked(current_user, peer_id, db)
     await _check_chat_active(current_user)
@@ -612,6 +614,7 @@ async def send_media_message(
             detail=f"user_id={peer_id} not found",
         )
 
+    account_status.assert_peer_usable(target)
     await _require_not_blocked(current_user.id, peer_id, db)
     await _require_unlocked(current_user, peer_id, db)
     await _check_chat_active(current_user)
